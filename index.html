@@ -3,116 +3,108 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>COOL104 - Two-Deck Sevens</title>
+  <title>COOL104 – ソリティア（単独プレイ・最高記録対応）</title>
   <style>
-    :root {
-      --bg: #0b1020; --panel: #111936; --panel-2:#0e1530; --text: #e8ecff; --muted:#9aa6ff;
-      --accent:#6ea8fe; --accent-2:#b7d0ff; --good:#60d394; --warn:#ffd166; --bad:#ff6b6b;
-      --card:#f8fafc; --card-text:#0b1020; --shadow: rgba(0,0,0,.25);
-    }
-    * { box-sizing: border-box }
-    html, body { height: 100% }
-    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; color: var(--text); background: radial-gradient(1200px 800px at 20% 0%, #111936, #090f20) fixed; }
-    header { display:flex; align-items:center; justify-content:space-between; padding: 12px 20px; background: linear-gradient(180deg, #0e1530 0%, #0b1020 100%); border-bottom: 1px solid #1c2752; position: sticky; top: 0; z-index: 10; }
-    header h1 { font-size: 1.05rem; letter-spacing:.02em; margin:0; opacity:.95 }
-    header .controls { display:flex; gap:8px; flex-wrap:wrap }
-    button, select { background: var(--panel); border:1px solid #28366b; color: var(--text); padding:8px 10px; border-radius: 10px; cursor:pointer; box-shadow: 0 6px 14px var(--shadow) inset; }
-    button:hover { border-color: var(--accent); }
-    button.primary { background: linear-gradient(180deg, #2a3f82, #1b2a59); border-color:#3d58a6 }
-    button.ghost { background: transparent; border-color:#23315f }
-    main { max-width: 1200px; margin: 16px auto; padding: 0 16px 40px; }
-    .row { display:grid; grid-template-columns: 280px 1fr; gap:16px }
-    @media (max-width: 900px) { .row { grid-template-columns: 1fr } }
+    :root { --bg:#0b1020; --panel:#111936; --panel2:#0f1735; --text:#e8ecff; --muted:#9aa6ff; --accent:#6ea8fe; --accent2:#b7d0ff; --good:#60d394; --warn:#ffd166; --card:#f8fafc; --card-text:#0b1020; --shadow:rgba(0,0,0,.25) }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;color:var(--text);background:radial-gradient(1200px 800px at 20% 0%, #111936, #090f20) fixed;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans"}
+    header{position:sticky;top:0;z-index:10;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(180deg,#0e1530,#0b1020);border-bottom:1px solid #1b2858}
+    h1{font-size:1.05rem;margin:0;letter-spacing:.02em}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    button,select{background:var(--panel);border:1px solid #27366d;color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer;box-shadow:0 6px 14px var(--shadow) inset}
+    button.primary{background:linear-gradient(180deg,#2a3f82,#1b2a59);border-color:#3d58a6}
+    button:hover{border-color:var(--accent)}
+    main{max-width:1100px;margin:16px auto;padding:0 16px 40px}
+    .grid{display:grid;grid-template-columns:280px 1fr;gap:16px}
+    @media (max-width: 900px){.grid{grid-template-columns:1fr}}
 
-    .sidebar { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border:1px solid #1b2958; border-radius: 16px; padding: 14px; box-shadow: 0 12px 40px var(--shadow); }
-    .sidebar h2 { margin: 6px 0 10px; font-size: .95rem; color: var(--accent-2) }
-    .sidebar .box { background:#0c1330; border:1px solid #1d2a5a; border-radius: 12px; padding:10px; margin-bottom:10px }
-    .kv { display:grid; grid-template-columns: 1fr auto; gap:6px; font-size:.9rem }
-    .muted { color: var(--muted); opacity:.9 }
+    .side{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid #1a285a;border-radius:16px;padding:14px;box-shadow:0 12px 40px var(--shadow)}
+    .side h2{margin:6px 0 10px;font-size:.95rem;color:#cfe0ff}
+    .side .box{background:#0c1330;border:1px solid #1d2a5a;border-radius:12px;padding:10px;margin-bottom:10px}
+    .kv{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:.9rem}
+    .muted{color:var(--muted);opacity:.9}
 
-    .table { background:linear-gradient(180deg, #0d1432, #0b1128); border:1px solid #162353; border-radius: 18px; padding: 16px; box-shadow: 0 18px 50px var(--shadow); min-height: 520px; position:relative }
-    .lanes { display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 6px }
-    .lane { background: #0b1026; border:1px dashed #21306c; border-radius: 14px; padding: 8px; min-height: 150px; position:relative }
-    .lane h3 { font-size:1rem; margin: 2px 0 8px; color: var(--accent-2); font-weight:600 }
+    .table{background:linear-gradient(180deg,#0d1432,#0b1128);border:1px solid #162353;border-radius:18px;padding:16px;box-shadow:0 18px 50px var(--shadow);min-height:560px;position:relative}
+    .status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:.95rem}
+    .pill{padding:6px 10px;border-radius:999px;border:1px solid #2a3b7f;background:#0c1332}
+    .pill.good{border-color:#206b4f;color:#a7f3d0}
+    .pill.warn{border-color:#7a5a1c;color:#ffe9a6}
 
-    .chain { display:flex; flex-wrap:wrap; align-items:center; gap:6px }
-    .placeholder { color:#2e427f; font-size:1rem; font-style:italic; padding: 8px 4px }
+    .board{display:grid;grid-template-columns:1fr;gap:12px;margin-top:10px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .slot{min-width:70px;min-height:100px;border:1px dashed #23336d;border-radius:12px;display:grid;place-items:center;padding:6px}
+    .pile{display:flex;gap:8px;align-items:center}
 
-    /* 手札: 1列・スマホ横スクロール */
-    .hand { display:flex; flex-wrap: nowrap; gap: 8px; padding: 10px; background:linear-gradient(180deg, #0d1536, #0a0f25); border-radius: 14px; border:1px solid #172659; margin-top: 16px; overflow-x:auto; -webkit-overflow-scrolling:touch }
-    .hand h3 { flex: 0 0 auto; margin: 0 8px 6px 0; font-size:1rem; color: var(--accent-2) }
+    /* 手札: 1列横スクロール（スマホ崩れを防止） */
+    .hand{display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,#0d1536,#0a0f25);border:1px solid #172659;border-radius:14px;padding:10px;margin-top:16px}
+    .hand h3{flex:0 0 auto;margin:0 8px 6px 0;font-size:.95rem;color:#cfe0ff}
 
-    /* カード大きめ */
-    .card { flex: 0 0 auto; width: 80px; height: 110px; border-radius: 12px; background: var(--card); color: var(--card-text); position: relative; box-shadow: 0 4px 12px var(--shadow); user-select:none; }
-    .card .rank { position:absolute; top:6px; left:6px; font-weight:700; font-size: 1.2rem }
-    .card .suit { position:absolute; bottom:6px; right:6px; font-size: 1.2rem }
-    .card.red { color:#b00020 }
-    .card.back { background: linear-gradient(135deg, #1e2a57, #0f1737); border:1px solid #2d3e82 }
-    .card.back::after { content:"◆"; position:absolute; inset:0; display:grid; place-items:center; color:#9fb6ff; font-size: 1.6rem; letter-spacing:.2em; }
-    .card.playable { outline: 3px solid #60d394; outline-offset: 0; }
-    .card.disabled { opacity:.5; filter: grayscale(0.4) }
+    /* カード（大きめ） */
+    .card{flex:0 0 auto;width:84px;height:118px;border-radius:12px;background:var(--card);color:var(--card-text);position:relative;box-shadow:0 4px 12px var(--shadow);user-select:none}
+    .card .rank{position:absolute;top:8px;left:8px;font-weight:700;font-size:1.3rem}
+    .card .suit{position:absolute;bottom:8px;right:8px;font-size:1.3rem}
+    .card.red{color:#b00020}
+    .card.back{background:linear-gradient(135deg,#1e2a57,#0f1737);border:1px solid #2d3e82}
+    .card.back::after{content:"◆";position:absolute;inset:0;display:grid;place-items:center;color:#9fb6ff;font-size:1.8rem;letter-spacing:.2em}
+    .card.playable{outline:3px solid #60d394}
+    .card.disabled{opacity:.5;filter:grayscale(.3)}
 
-    .status { display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:.95rem }
-    .pill { padding: 6px 10px; border-radius: 999px; border:1px solid #2a3b7f; background:#0c1332; }
-    .pill.good { border-color:#206b4f; color:#a7f3d0 }
-    .pill.warn { border-color:#7a5a1c; color:#ffe9a6 }
-
-    .players { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-top: 14px }
-    .player { background: #0c1332; border:1px solid #1a285b; border-radius: 14px; padding: 10px; }
-    .player h4 { margin:0 0 6px; font-size:1rem; color: var(--accent-2) }
-    .meter { height: 8px; background:#0e1736; border:1px solid #1a285b; border-radius: 999px; overflow:hidden }
-    .meter > i { display:block; height:100%; width:0; background: linear-gradient(90deg,#6ea8fe,#b7d0ff) }
-
-    .footer { margin-top: 18px; font-size:.9rem; color: var(--muted) }
+    .footer{margin-top:18px;font-size:.85rem;color:var(--muted)}
+    table.score{width:100%;border-collapse:collapse;font-size:.9rem}
+    .score th,.score td{padding:6px 8px;border-bottom:1px solid #1a285a;text-align:left}
 
     /* 残りカードトラッカー */
-    .tracker { display:grid; gap:8px }
-    .suitRow { background:#0c1330; border:1px solid #1d2a5a; border-radius:12px; padding:8px }
-    .suitHead { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-weight:600; color: var(--accent-2) }
-    .rgrid { display:grid; grid-template-columns: repeat(13, minmax(18px, 1fr)); gap:4px }
-    .rchip { font-size:.8rem; display:grid; place-items:center; padding:4px 0; border-radius:8px; border:1px solid #27366d; background:#0e1736; color:#cfe0ff }
-    .rchip.zero { opacity:.35; color:#8aa0ff; border-style:dashed }
-    .rchip.full { background:#0d224a; }
+    .tracker{display:grid;gap:8px}
+    .suitRow{background:#0c1330;border:1px solid #1d2a5a;border-radius:12px;padding:8px}
+    .suitHead{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:600;color:var(--accent2)}
+    .rgrid{display:grid;grid-template-columns:repeat(13,minmax(18px,1fr));gap:4px}
+    .rchip{font-size:.8rem;display:grid;place-items:center;padding:4px 0;border-radius:8px;border:1px solid #27366d;background:#0e1736;color:#cfe0ff}
+    .rchip.zero{opacity:.35;color:#8aa0ff;border-style:dashed}
+    .rchip.full{background:#0d224a}
 
     @media (max-width:520px){
-      .card{ width: 70px; height: 96px }
-      .card .rank, .card .suit{ font-size: 1.1rem }
-      .rgrid{ grid-template-columns: repeat(13, 22px) }
+      .card{width:74px;height:104px}
+      .card .rank,.card .suit{font-size:1.15rem}
+      .rgrid{grid-template-columns:repeat(13,22px)}
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>COOL104（Two-Deck Sevens / しちならべ 104枚版）</h1>
+    <h1>COOL104（ソリティア）— 同スート or 同ランクで重ねる一人用</h1>
     <div class="controls">
-      <button class="primary" id="newGameBtn">新しく始める</button>
-      <button class="ghost" id="passBtn" title="出せるカードが無いとき">パス</button>
-      <select id="aiSpeed">
-        <option value="900">AI速度: 普通</option>
-        <option value="1600">ゆっくり</option>
-        <option value="500">速い</option>
+      <button id="newGame" class="primary">新しく始める</button>
+      <button id="hintBtn" title="出せるカードをハイライト">ヒント</button>
+      <select id="deckMode">
+        <option value="1" selected>1デッキ（52枚）</option>
+        <option value="2">2デッキ連続（104枚目標）</option>
       </select>
     </div>
   </header>
 
   <main>
-    <div class="row">
-      <aside class="sidebar" aria-label="ゲーム情報">
+    <div class="grid">
+      <aside class="side">
         <div class="box">
-          <h2>概要</h2>
-          <p style="line-height:1.55">標準トランプ<strong>2組＝104枚</strong>で遊ぶ「しちならべ」の亜種です。各スートの7を中心に、<strong>A→2→…→6｜7｜8→9→…→K</strong>の順に繋げます。手札から置けるカードが無い場合は<strong>パス</strong>。最初に手札が0になったプレイヤーの勝ち。</p>
+          <h2>ルール（Wikipedia準拠）</h2>
+          <ul style="margin:6px 0 0 18px;line-height:1.6">
+            <li>手札は常に<strong>5枚</strong>。最初の1枚は好きなカードを<strong>台札</strong>として出す。</li>
+            <li>以後、<strong>台札の一番上</strong>と<strong>同じスート</strong>または<strong>同じランク</strong>のみ出せる。</li>
+            <li>カードを1枚出すたび、山札から1枚<strong>補充</strong>（手札は常に5枚、山札が尽きるまで）。</li>
+            <li>出せなくなった時点で<strong>終了</strong>。何枚出せたかがスコア。</li>
+            <li>1デッキ52枚を出し切れたら<strong>クリア</strong>。選択が2デッキなら続けて<strong>104枚</strong>まで挑戦可。</li>
+          </ul>
         </div>
         <div class="box">
-          <h2>ルール（本実装）</h2>
-          <ul style="margin:6px 0 0 18px; line-height:1.6">
-            <li>使用カード: ジョーカー無し、<strong>2デッキ</strong>（104枚）。</li>
-            <li>配布: 4人戦（人間×1 + AI×3）で均等配布。</li>
-            <li>開始: 各スートの7（同名カードは2枚ある）が場に自動配置。</li>
-            <li>手番: 自分の手札から、各スートの<strong>連続する上下1枚</strong>のみ出せます（例: 7の隣の6または8）。</li>
-            <li>同ランクが<strong>2枚</strong>手札にある場合、同手番で<strong>連続プレイ可</strong>。</li>
-            <li>手札から1枚も出せない場合は<strong>パス</strong>。連続パスは可（ペナルティ無し）。</li>
-            <li>上がり: 最初に手札が0枚になったら勝者確定。続行して順位決定も可能。</li>
-          </ul>
+          <h2>スコア / 状態</h2>
+          <table class="score">
+            <tbody>
+              <tr><th>出した枚数</th><td id="scorePlayed">0</td></tr>
+              <tr><th>残り山札</th><td id="scoreStock">0</td></tr>
+              <tr><th>現在デッキ</th><td id="scoreDeck">1 / 1</td></tr>
+            </tbody>
+          </table>
         </div>
         <div class="box">
           <h2>残りカード（場に未登場）</h2>
@@ -122,202 +114,197 @@
           <h2>最高記録</h2>
           <table class="score" id="hiscoreTbl">
             <tbody>
-              <tr><th>ベスト順位</th><td id="hsBestPlace">-</td></tr>
-              <tr><th>最少手番（1位時）</th><td id="hsFastTurns">-</td></tr>
-              <tr><th>最速タイム（1位時）</th><td id="hsFastTime">-</td></tr>
-              <tr><th>通算</th><td id="hsTotals">-</td></tr>
+              <tr><th>最大到達枚数</th><td id="hsBestPlayed">-</td></tr>
+              <tr><th>クリア最速（52枚）</th><td id="hsBestTime52">-</td></tr>
+              <tr><th>クリア最速（104枚）</th><td id="hsBestTime104">-</td></tr>
+              <tr><th>通算プレイ</th><td id="hsTotal">-</td></tr>
             </tbody>
           </table>
           <button id="resetHS" class="ghost" style="margin-top:8px">記録をリセット</button>
         </div>
-        <div class="box">
-          <h2>カスタム設定</h2>
-          <div class="kv"><span class="muted">デッキ数</span><span id="cfgDecks">2</span></div>
-          <div class="kv"><span class="muted">プレイヤー数</span><span id="cfgPlayers">4（人1 + AI3）</span></div>
-        </div>
       </aside>
 
-      <section class="table" aria-label="プレイテーブル">
-        <div class="status" id="status">
-          <span class="pill" id="turnPill">手番: -</span>
+      <section class="table">
+        <div class="status">
+          <span class="pill" id="statePill">状態: 準備中</span>
+          <span class="pill" id="topPill">台札: -</span>
           <span class="pill" id="tipsPill">ヒント: -</span>
         </div>
-        <div class="lanes" id="lanes"></div>
 
-        <div class="players" id="players"></div>
+        <div class="board">
+          <div class="row">
+            <div class="pile">
+              <div class="slot" id="stockSlot" title="山札"><div class="card back" aria-label="stock"></div></div>
+              <div class="slot" id="wasteSlot" title="台札（出したカードの山）"></div>
+            </div>
+          </div>
+        </div>
 
         <div class="hand" id="hand"><h3>あなたの手札</h3></div>
-        <div class="footer">© COOL104 demo – この単一HTMLは GitHub Pages にそのまま置けば動きます。</div>
+        <div class="footer">© COOL104 solitaire – 単一HTML。GitHub Pages に index.html として置くだけで動作します。</div>
       </section>
     </div>
   </main>
 
   <script>
-    // 基本ユーティリティ
-    const SUITS = ["♠", "♥", "♦", "♣"]; 
-    const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
-    const RANK_TO_NUM = Object.fromEntries(RANKS.map((r,i)=>[r, i+1]));
-    const NUM_TO_RANK = Object.fromEntries(RANKS.map((r,i)=>[i+1, r]));
-    const $ = sel => document.querySelector(sel);
-    const $$ = sel => [...document.querySelectorAll(sel)];
-    function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]] } return arr }
-    function isRed(s){ return s === "♥" || s === "♦" }
+    // ===== ユーティリティ
+    const SUITS = ["♠","♥","♦","♣"]; const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];  
+    const R2N = Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
+    const $ = s=>document.querySelector(s); const $$ = s=>[...document.querySelectorAll(s)];
+    const isRed = s=> s==="♥"||s==="♦";
+    function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a }
+    function makeDeck(){ const d=[]; for(const s of SUITS){ for(const r of RANKS){ d.push({suit:s,rank:r}); } } return d }
 
-    function buildDecks(deckCount=2){
-      const cards = [];
-      for(let d=0; d<deckCount; d++){
-        for(const suit of SUITS){ for(const rank of RANKS){ cards.push({suit, rank, id:`${d}`}); } }
-      }
-      return shuffle(cards);
+    // ===== ゲーム状態
+    const st = {
+      deckMode: 1, // 1=52, 2=104（連続）
+      deckIndex: 1, // 現在のデッキ番号
+      stock: [], // 残り山札
+      waste: [], // 台札（出したカードの山）
+      hand: [],  // 手札 5
+      playedCount: 0,
+      over: false,
+      startAt: 0
     }
 
-    // ゲームステート
-    const state = {
-      deckCount: 2,
-      playerCount: 4,
-      hands: [],
-      lanes: null,
-      placedCounts: null,
-      turn: 0,
-      alive: [],
-      passStreak: 0,
-      finishedOrder: [],
-      aiDelay: 900,
-      metrics: { startAt: 0, humanTurns: 0 }
-    }
+    // ===== ルール判定
+    function canPlayOn(top, card){ if(!top) return true; return top.suit===card.suit || top.rank===card.rank }
+    function playableCards(){ const top = st.waste[st.waste.length-1]; return st.hand.filter(c=>canPlayOn(top,c)) }
 
-    function initPlacedCounts(){
-      state.placedCounts = {};
-      for(const s of SUITS){
-        state.placedCounts[s] = {};
-        for(const r of RANKS){ state.placedCounts[s][r] = 0; }
-        state.placedCounts[s]["7"] = Math.min(state.deckCount, 2); // 初期配置としてカウント
-      }
-    }
-
-    // 初期化
-    function initGame(){
-      const deck = buildDecks(state.deckCount);
-      const perPlayer = Math.floor(deck.length / state.playerCount);
-      state.hands = Array.from({length: state.playerCount}, ()=>[]);
-      for(let i=0;i<state.playerCount;i++){ state.hands[i] = deck.slice(i*perPlayer, (i+1)*perPlayer); }
-      const rest = deck.slice(perPlayer*state.playerCount);
-      if(rest.length){ for(let i=0;i<rest.length;i++) state.hands[i%state.playerCount].push(rest[i]); }
-      state.lanes = {}; for(const suit of SUITS){ state.lanes[suit] = { downMin:[7,7], upMax:[7,7] }; }
-      for(let p=0;p<state.playerCount;p++){ state.hands[p] = state.hands[p].filter(c=> c.rank !== "7" ); }
-      initPlacedCounts();
-      state.turn = 0; state.alive = Array.from({length: state.playerCount}, (_,i)=>i); state.passStreak = 0; state.finishedOrder = [];
-      state.metrics = { startAt: Date.now(), humanTurns: 0 };
-      renderAll(); updateHints(); maybeAIMove();
-    }
-
-    // 出せるか判定 & プレイ
-    function canPlay(card){
-      const n = RANK_TO_NUM[card.rank]; const lane = state.lanes[card.suit];
-      for(let i=0;i<2;i++){ if(n === lane.downMin[i]-1 && n>=1) return true; if(n === lane.upMax[i]+1 && n<=13) return true; }
-      return false;
-    }
-
-    function playCard(playerIndex, card){
-      const n = RANK_TO_NUM[card.rank]; const lane = state.lanes[card.suit]; let played=false;
-      for(let i=0;i<2;i++){ if(n===lane.downMin[i]-1){ lane.downMin[i]=n; played=true; break } if(n===lane.upMax[i]+1){ lane.upMax[i]=n; played=true; break } }
-      if(!played) return false;
-      const h = state.hands[playerIndex]; const idx = h.findIndex(x=>x.suit===card.suit && x.rank===card.rank && x.id===card.id); if(idx>=0) h.splice(idx,1);
-      state.placedCounts[card.suit][card.rank] = Math.min(state.deckCount, state.placedCounts[card.suit][card.rank]+1);
-      if(playerIndex===0){ state.metrics.humanTurns++; }
-      if(h.length===0){ state.finishedOrder.push(playerIndex); state.alive = state.alive.filter(x=>x!==playerIndex); if(playerIndex===0){ finalizeHumanResult(); } }
-      state.passStreak = 0; renderAll(); return true;
-    }
-
-    function doPass(){ if(state.turn===0) state.metrics.humanTurns++; state.passStreak++; nextTurn(); }
-
-    function nextTurn(){
-      if(state.alive.length<=1){ const last = state.alive[0]; if(last!==undefined) state.finishedOrder.push(last); if(last===0){ finalizeHumanResult(); } renderAll(); return; }
-      do{ state.turn = (state.turn+1) % state.playerCount; } while(!state.alive.includes(state.turn));
-      renderAll(); maybeAIMove();
-    }
-
-    // AI（簡易）
-    function maybeAIMove(){ if(state.turn===0) return; const ai=state.turn; setTimeout(()=>{ const hand=state.hands[ai]; const playable=hand.filter(c=>canPlay(c)); if(playable.length){ playable.sort((a,b)=>Math.abs(RANK_TO_NUM[a.rank]-7)-Math.abs(RANK_TO_NUM[b.rank]-7)); const first=playable[0]; playCard(ai, first); const sameRank = hand.filter(c=>c.rank===first.rank && c.suit===first.suit && canPlay(c)); if(sameRank.length){ playCard(ai, sameRank[0]); } } else { doPass(); } }, state.aiDelay); }
-
-    // 残りカードトラッカー
+    // ===== 残りカードトラッカー（場に出た枚数を積算）
+    const placedCounts = {}; for(const s of SUITS){ placedCounts[s] = {}; for(const r of RANKS){ placedCounts[s][r] = 0 } }
+    function bumpPlaced(card){ placedCounts[card.suit][card.rank] += 1 }
     function renderTracker(){
-      const wrap = $("#tracker"); wrap.innerHTML = "";
+      const wrap = document.querySelector("#tracker"); wrap.innerHTML = "";
+      const maxPerRank = st.deckMode===2 ? 2 : 1;
       for(const suit of SUITS){
         const box=document.createElement('div'); box.className='suitRow';
-        const head=document.createElement('div'); head.className='suitHead'; head.textContent=`${suit} の残り`; box.appendChild(head);
+        const head=document.createElement('div'); head.className='suitHead'; head.textContent=`${suit} の残り（未登場）`; box.appendChild(head);
         const grid=document.createElement('div'); grid.className='rgrid';
-        for(const r of RANKS){ const placed=state.placedCounts[suit][r]; const remain=state.deckCount-placed; const chip=document.createElement('div'); chip.className='rchip'; if(remain===0) chip.classList.add('zero'); if(remain===state.deckCount) chip.classList.add('full'); chip.title=`${suit}${r}: 場に ${placed} / 残り ${remain}`; chip.textContent = r==='10' ? '10' : r[0]; grid.appendChild(chip); }
+        for(const r of RANKS){ const placed=placedCounts[suit][r]; const remain=Math.max(0, maxPerRank - placed); const chip=document.createElement('div'); chip.className='rchip'; if(remain===0) chip.classList.add('zero'); if(remain===maxPerRank) chip.classList.add('full'); chip.title=`${suit}${r}: 場に ${placed} / 残り ${remain}`; chip.textContent = r==='10' ? '10' : r[0]; grid.appendChild(chip); }
         box.appendChild(grid); wrap.appendChild(box);
       }
     }
 
-    // ハイスコア保存
-    const HS_KEY = 'cool104_v1_highscore';
-    function loadHighScore(){ try{ return JSON.parse(localStorage.getItem(HS_KEY)||'null') }catch(e){ return null } }
-    function saveHighScore(obj){ localStorage.setItem(HS_KEY, JSON.stringify(obj)); }
-    function formatSec(s){ if(s==null) return '-'; const m=Math.floor(s/60), sec=String(s%60).padStart(2,'0'); return m? `${m}:${sec}`:`0:${sec}` }
-    function finalizeHumanResult(){
-      const place = state.finishedOrder.indexOf(0)+1;
-      const spentSec = Math.round((Date.now()-state.metrics.startAt)/1000);
-      const turns = state.metrics.humanTurns;
-      const prev = loadHighScore() || { total:0, wins:0, bestPlace:null, fastTurnsFirst:null, fastTimeFirst:null };
-      const hs = {...prev};
-      hs.total = (hs.total||0)+1;
-      if(place===1){ hs.wins = (hs.wins||0)+1; }
-      hs.bestPlace = hs.bestPlace==null ? place : Math.min(hs.bestPlace, place);
-      if(place===1){
-        hs.fastTurnsFirst = (hs.fastTurnsFirst==null || turns < hs.fastTurnsFirst) ? turns : hs.fastTurnsFirst;
-        hs.fastTimeFirst = (hs.fastTimeFirst==null || spentSec < hs.fastTimeFirst) ? spentSec : hs.fastTimeFirst;
-      }
-      saveHighScore(hs); renderHighScore();
-    }
-    function renderHighScore(){
-      const hs = loadHighScore(); const $id = (x)=>document.getElementById(x);
-      if(!hs){ $id('hsBestPlace').textContent='-'; $id('hsFastTurns').textContent='-'; $id('hsFastTime').textContent='-'; $id('hsTotals').textContent='-'; return; }
-      $id('hsBestPlace').textContent = hs.bestPlace ?? '-';
-      $id('hsFastTurns').textContent = hs.fastTurnsFirst ?? '-';
-      $id('hsFastTime').textContent = hs.fastTimeFirst!=null ? formatSec(hs.fastTimeFirst) : '-';
-      $id('hsTotals').textContent = `対戦 ${hs.total||0}・勝利 ${hs.wins||0}`;
-    }
-
-    // 描画
+    // ===== 描画
     function renderAll(){
-      $("#cfgDecks").textContent = String(state.deckCount);
-      $("#cfgPlayers").textContent = `${state.playerCount}（人1 + AI${state.playerCount-1}）`;
-      $("#turnPill").textContent = `手番: ${state.turn===0?"あなた":"AI"+state.turn}`;
-      $("#tipsPill").textContent = state.alive.length>1 ? `残りプレイヤー: ${state.alive.length}` : `ゲーム終了`;
+      const top = st.waste[st.waste.length-1];
+      document.querySelector("#topPill").textContent = `台札: ${top?top.suit+top.rank:"-"}`;
+      document.querySelector("#scorePlayed").textContent = String(st.playedCount);
+      document.querySelector("#scoreStock").textContent = String(st.stock.length);
+      document.querySelector("#scoreDeck").textContent = `${st.deckIndex} / ${st.deckMode}`;
 
-      const lanes = $("#lanes"); lanes.innerHTML = "";
-      for(const suit of SUITS){ const lane=state.lanes[suit]; const el=document.createElement('div'); el.className='lane'; const title=document.createElement('h3'); title.textContent=`${suit} の列`; el.appendChild(title); const chain=document.createElement('div'); chain.className='chain'; for(let i=0;i<2;i++){ const down=lane.downMin[i]; const up=lane.upMax[i]; const tag=document.createElement('div'); tag.className='pill'; tag.style.borderColor='#2a3b7f'; tag.textContent=`${NUM_TO_RANK[down]} ⇐ 7 ⇐ ${NUM_TO_RANK[up]}`; chain.appendChild(tag); } if(chain.children.length===0){ const ph=document.createElement('div'); ph.className='placeholder'; ph.textContent='7から始めます'; chain.appendChild(ph); } el.appendChild(chain); lanes.appendChild(el); }
-
-      const players = $("#players"); players.innerHTML = "";
-      for(let i=0;i<state.playerCount;i++){
-        const box=document.createElement('div'); box.className='player';
-        const h4=document.createElement('h4'); const done=state.finishedOrder.indexOf(i)+1; h4.textContent=`P${i}: ${i===0?"あなた":"AI"+i}  ${done?`（${done}位）`:''}`; box.appendChild(h4);
-        const meter=document.createElement('div'); meter.className='meter'; const fill=document.createElement('i'); const total=state.deckCount*52/state.playerCount | 0; const left=state.hands[i].length; const ratio=Math.max(0, Math.min(1, 1-left/total)); fill.style.width=`${ratio*100}%`; meter.appendChild(fill); box.appendChild(meter);
-        const note=document.createElement('div'); note.className='muted'; note.style.marginTop='6px'; note.textContent=`手札: ${left}枚`; box.appendChild(note); players.appendChild(box);
+      const handEl = document.querySelector("#hand");
+      handEl.innerHTML = '<h3>あなたの手札</h3>';
+      const playable = playableCards().map(x=>JSON.stringify(x));
+      for(const c of st.hand.slice()){
+        const el = cardView(c);
+        if(st.over) el.classList.add('disabled');
+        if(playable.includes(JSON.stringify(c))) el.classList.add('playable');
+        el.onclick = ()=>{
+          if(st.over) return;
+          if(!canPlayOn(top, c)) return;
+          playCard(c);
+        }
+        handEl.appendChild(el);
       }
 
-      const hand = $("#hand"); hand.innerHTML = '<h3>あなたの手札</h3>';
-      const cards = state.hands[0].slice().sort((a,b)=>{ const sA=SUITS.indexOf(a.suit), sB=SUITS.indexOf(b.suit); if(sA!==sB) return sA-sB; return RANK_TO_NUM[a.rank]-RANK_TO_NUM[b.rank]; });
-      for(const c of cards){ const btn=document.createElement('div'); btn.className='card' + ((c.suit==="♥"||c.suit==="♦")?' red':''); const r=document.createElement('div'); r.className='rank'; r.textContent=c.rank; btn.appendChild(r); const s=document.createElement('div'); s.className='suit'; s.textContent=c.suit; btn.appendChild(s); btn.setAttribute('aria-label', `${c.suit}${c.rank}`); if(state.turn!==0 || !canPlay(c)) btn.classList.add('disabled'); if(state.turn===0 && canPlay(c)) btn.classList.add('playable'); btn.onclick=()=>{ if(state.turn!==0) return; if(!canPlay(c)) return; if(playCard(0, c)){ const next = state.hands[0].find(x=>x.rank===c.rank && x.suit===c.suit && canPlay(x)); if(next){ /* optional */ } nextTurn(); } }; hand.appendChild(btn); }
+      const waste = document.querySelector("#wasteSlot");
+      waste.innerHTML = "";
+      if(top){ waste.appendChild(cardView(top)); }
 
-      if(state.alive.length<=1){ $("#tipsPill").classList.add('good'); $("#tipsPill").textContent = `結果: ${state.finishedOrder.map((p,i)=>`${i+1}位=P${p}`).join(' / ')}`; }
+      document.querySelector("#tipsPill").textContent = playable.length? `出せるカード: ${playableCards().map(c=>c.suit+c.rank).join(' ')}` : '出せるカードなし';
+      document.querySelector("#statePill").textContent = st.over ? '状態: 終了' : '状態: プレイ中';
 
-      renderTracker(); renderHighScore();
+      renderTracker();
+      renderHighScore();
     }
 
-    function updateHints(){ if(state.turn!==0){ $("#tipsPill").textContent='AIの手番です'; return; } const playable=state.hands[0].filter(c=>canPlay(c)); if(playable.length){ $("#tipsPill").textContent=`出せるカード: ${playable.slice(0,6).map(c=>c.suit+c.rank).join(' ')}${playable.length>6?' …':''}`; } else { $("#tipsPill").classList.add('warn'); $("#tipsPill").textContent='出せるカードがありません。パスしてください。'; } }
+    function cardView(c){
+      const el = document.createElement('div');
+      el.className = 'card' + (isRed(c.suit)?' red':'');
+      const r=document.createElement('div'); r.className='rank'; r.textContent = c.rank; el.appendChild(r);
+      const s=document.createElement('div'); s.className='suit'; s.textContent = c.suit; el.appendChild(s);
+      el.setAttribute('aria-label', `${c.suit}${c.rank}`);
+      return el;
+    }
 
-    // イベント
-    document.getElementById('newGameBtn').addEventListener('click', ()=>{ initGame(); });
-    document.getElementById('passBtn').addEventListener('click', ()=>{ if(state.turn===0){ doPass(); } });
-    document.getElementById('aiSpeed').addEventListener('change', (e)=>{ state.aiDelay = Number(e.target.value)||900; });
-    document.getElementById('resetHS').addEventListener('click', ()=>{ localStorage.removeItem(HS_KEY); renderHighScore(); });
+    // ===== ロジック
+    function startGame(){
+      // リセット
+      st.deckIndex = 1; st.playedCount = 0; st.over = false; st.waste = []; st.hand = []; st.stock = []; st.startAt = Date.now();
+      for(const s of SUITS){ for(const r of RANKS){ placedCounts[s][r] = 0 } }
+      // 山札生成
+      const d1 = shuffle(makeDeck());
+      st.stock = d1;
+      dealTo5();
+      renderAll();
+      document.querySelector("#statePill").textContent = '状態: 最初の1枚を出してください（何でも可）';
+    }
 
-    // 起動
-    initGame();
+    function nextDeckIfNeeded(){
+      if(st.deckMode===2 && st.stock.length===0 && st.hand.length>0 && st.playedCount>=52 && st.deckIndex===1){
+        st.deckIndex = 2;
+        st.stock = shuffle(makeDeck());
+      }
+    }
+
+    function dealTo5(){ while(st.hand.length<5 && st.stock.length){ st.hand.push(st.stock.pop()); } }
+
+    function playCard(card){
+      const i = st.hand.findIndex(x=>x.suit===card.suit && x.rank===card.rank);
+      if(i<0) return;
+      const [c] = st.hand.splice(i,1);
+      st.waste.push(c); bumpPlaced(c);
+      st.playedCount++;
+      nextDeckIfNeeded();
+      dealTo5();
+      // 行き詰まり判定
+      const canMore = st.hand.some(h=>canPlayOn(st.waste[st.waste.length-1], h));
+      if(!canMore) st.over = true;
+      if((st.deckMode===1 && st.playedCount===52) || (st.deckMode===2 && st.playedCount===104)) st.over = true;
+      renderAll();
+      if(st.over) finalizeResult();
+    }
+
+    // ===== ハイスコア
+    const HS_KEY = 'cool104_solo_v1';
+    function loadHS(){ try{ return JSON.parse(localStorage.getItem(HS_KEY)||'null') }catch(e){ return null } }
+    function saveHS(obj){ localStorage.setItem(HS_KEY, JSON.stringify(obj)); }
+    function fmtSec(s){ if(s==null) return '-'; const m=Math.floor(s/60), sec=String(s%60).padStart(2,'0'); return m?`${m}:${sec}`:`0:${sec}` }
+
+    function finalizeResult(){
+      const spent = Math.round((Date.now()-st.startAt)/1000);
+      const hs = loadHS() || { bestPlayed:0, bestTime52:null, bestTime104:null, total:0 };
+      hs.total = (hs.total||0)+1;
+      hs.bestPlayed = Math.max(hs.bestPlayed||0, st.playedCount);
+      if(st.playedCount===52 && st.deckMode===1){ hs.bestTime52 = (hs.bestTime52==null?spent:Math.min(hs.bestTime52, spent)); }
+      if(st.playedCount===104 && st.deckMode===2){ hs.bestTime104 = (hs.bestTime104==null?spent:Math.min(hs.bestTime104, spent)); }
+      saveHS(hs); renderHighScore();
+    }
+
+    function renderHighScore(){
+      const hs = loadHS();
+      const $id = id=>document.getElementById(id);
+      if(!hs){ $id('hsBestPlayed').textContent='-'; $id('hsBestTime52').textContent='-'; $id('hsBestTime104').textContent='-'; $id('hsTotal').textContent='-'; return; }
+      $id('hsBestPlayed').textContent = hs.bestPlayed ?? '-';
+      $id('hsBestTime52').textContent = hs.bestTime52!=null ? fmtSec(hs.bestTime52) : '-';
+      $id('hsBestTime104').textContent = hs.bestTime104!=null ? fmtSec(hs.bestTime104) : '-';
+      $id('hsTotal').textContent = hs.total ?? 0;
+    }
+
+    // ===== イベント
+    document.querySelector("#newGame").addEventListener('click', startGame);
+    document.querySelector("#hintBtn").addEventListener('click', ()=>{
+      const pc = playableCards(); if(!pc.length) return;
+      const labels = new Set(pc.map(c=>c.suit+c.rank));
+      document.querySelectorAll(".hand .card").forEach(el=>{ const lab = el.getAttribute('aria-label').replace(/\s/g,''); if(labels.has(lab)) el.classList.add('playable'); });
+    });
+    document.querySelector("#deckMode").addEventListener('change', e=>{ st.deckMode = Number(e.target.value); startGame(); })
+
+    // 初回開始
+    startGame();
+    document.querySelector("#resetHS").addEventListener('click', ()=>{ localStorage.removeItem(HS_KEY); renderHighScore(); });
   </script>
 </body>
 </html>
