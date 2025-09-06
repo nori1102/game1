@@ -1,529 +1,457 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>間違い探し（生成AI風・高密度アニメ背景・ローカル生成）</title>
-<style>
-  :root{
-    --bg:#0b1020; --fg:#e6f3ff; --line:#22314f;
-    --good:#23d18b; --bad:#ff4d6d; --hint:#f7b500;
-  }
-  html,body{margin:0;background:radial-gradient(1200px 600px at 50% 5%, #141a36 0%, #0b1020 55%, #070a14 100%);
-    color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP",sans-serif}
-  .wrap{max-width:1280px;margin:0 auto;padding:14px}
-  header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-  h1{font-size:clamp(18px,3vw,24px);letter-spacing:.06em;margin:6px 0}
-  .btn{appearance:none;border:1px solid var(--line);background:#0e1836;color:var(--fg);
-    border-radius:12px;padding:10px 16px;cursor:pointer;font-weight:600}
-  .btn:hover{filter:brightness(1.08)}
-  .pill{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#0e1533;font-variant-numeric:tabular-nums}
-  .boards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
-  .board{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.45);background:#0a122b}
-  canvas{display:block;width:100%;height:auto}
-  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(0,0,0,.45)}
-  .card{background:rgba(8,12,28,.85);border:1px solid var(--line);border-radius:16px;padding:22px 20px;max-width:560px}
-  footer{opacity:.75;font-size:12px;margin-top:10px;text-align:center}
-  .shake{animation:shake .25s ease}
-  @keyframes shake{
-    0%{transform:translateX(0)} 25%{transform:translateX(-6px)}
-    50%{transform:translateX(6px)} 75%{transform:translateX(-4px)} 100%{transform:translateX(0)}
-  }
-  .reticle{
-    position:absolute; pointer-events:none; border:2px solid rgba(255,255,255,.45);
-    border-radius:50%; width:56px; height:56px; transform:translate(-50%,-50%);
-    box-shadow:0 0 0 2px rgba(0,0,0,.25) inset;
-  }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <h1>間違い探し（生成AI風・高密度アニメ背景）</h1>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button id="startBtn" class="btn">▶ スタート</button>
-      <button id="revealBtn" class="btn">👀 答えを見る</button>
-      <span class="pill">残り: <b id="remain">-</b></span>
-      <span class="pill">ミス: <b id="miss">0</b></span>
-      <span class="pill">タイム: <b id="time">00:00</b></span>
-    </div>
-  </header>
+import React, { useMemo, useState, useEffect } from "react";
 
-  <div class="boards">
-    <div class="board">
-      <canvas id="canL"></canvas>
-    </div>
-    <div class="board" id="boardR">
-      <canvas id="canR"></canvas>
-      <div id="menu" class="overlay">
-        <div class="card">
-          <h2>遊び方</h2>
-          <p>スタートで左右に「生成AI風の高密度アニメ背景」を自動生成。右には<b>常に3か所</b>の大きめの違いを作ります。クリックで指定！</p>
-          <p style="opacity:.85">60秒 or ミス6回で自動的に答え表示。ニアミス時は黄色ガイドが出ます。</p>
-          <button id="startBig" class="btn">▶ スタート</button>
+// --- Simple Advance Wars-like tactics game in a single React file ---
+// - Two teams: Red vs Blue
+// - Units have movement points, attack ranges, and simple damage rules
+// - Click your unit → highlight moves → click destination → choose attack (if available)
+// - End Turn button passes control and refreshes unit actions
+// - Win when the enemy has no units
+
+// ====== DATA ======
+const W = 12; // columns
+const H = 8;  // rows
+
+const TERRAIN = {
+  PLAINS: { key: "PLAINS", name: "Plains", moveCost: 1, defense: 0, emoji: "·" },
+  FOREST: { key: "FOREST", name: "Forest", moveCost: 2, defense: 1, emoji: "🌲" },
+  ROAD:   { key: "ROAD",   name: "Road",   moveCost: 1, defense: 0, emoji: "─" },
+  CITY:   { key: "CITY",   name: "City",   moveCost: 1, defense: 2, emoji: "🏙️" },
+  MOUNTAIN:{key:"MOUNTAIN",name:"Mountain",moveCost: 999, defense: 3, emoji: "⛰️"},
+};
+
+const TERRAIN_KEYS = Object.keys(TERRAIN);
+
+const mkTile = (key) => ({ ...TERRAIN[key] });
+
+// A light, readable map (H rows of W cols). 
+// Use characters to define terrain more easily
+// . = plains, F = forest, R = road, C = city, M = mountain
+const MAP_STR = [
+  "..F...R..C..",
+  ".F..M....F..",
+  "..R..F..C...",
+  "....F....M..",
+  "..C..R..F...",
+  "..M....F..R.",
+  "..F..C....F.",
+  "C..R...F..M.",
+];
+
+function parseMap() {
+  const grid = [];
+  for (let y = 0; y < H; y++) {
+    const row = [];
+    for (let x = 0; x < W; x++) {
+      const ch = MAP_STR[y][x] || ".";
+      let key = "PLAINS";
+      if (ch === ".") key = "PLAINS";
+      else if (ch === "F") key = "FOREST";
+      else if (ch === "R") key = "ROAD";
+      else if (ch === "C") key = "CITY";
+      else if (ch === "M") key = "MOUNTAIN";
+      row.push({ x, y, ...mkTile(key) });
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+// Unit templates
+const UNIT_TYPES = {
+  INF: {
+    key: "INF",
+    name: "Infantry",
+    move: 3,
+    minRange: 1,
+    maxRange: 1,
+    emoji: "👤",
+    // base damage vs target type
+    atk: { INF: 55, TANK: 25, ARTY: 45 },
+  },
+  TANK: {
+    key: "TANK",
+    name: "Tank",
+    move: 5,
+    minRange: 1,
+    maxRange: 1,
+    emoji: "🛡️",
+    atk: { INF: 85, TANK: 55, ARTY: 90 },
+  },
+  ARTY: {
+    key: "ARTY",
+    name: "Artillery",
+    move: 2,
+    minRange: 2,
+    maxRange: 3,
+    emoji: "🎯",
+    atk: { INF: 70, TANK: 45, ARTY: 75 },
+  },
+};
+
+const TEAM = {
+  RED: { key: "RED", name: "Red", color: "#ef4444" },
+  BLUE:{ key: "BLUE",name: "Blue",color: "#3b82f6" },
+};
+
+let idCounter = 1;
+function mkUnit({ type, team, x, y }) {
+  const t = UNIT_TYPES[type];
+  return {
+    id: idCounter++,
+    type: t.key,
+    team: team.key,
+    x, y,
+    hp: 10, // 10 = 100%
+    moved: false,
+    acted: false,
+  };
+}
+
+function initialUnits() {
+  const u = [];
+  // Red side (top-left)
+  u.push(mkUnit({ type: "INF", team: TEAM.RED, x: 0, y: 0 }));
+  u.push(mkUnit({ type: "TANK", team: TEAM.RED, x: 1, y: 1 }));
+  u.push(mkUnit({ type: "ARTY", team: TEAM.RED, x: 2, y: 0 }));
+  // Blue side (bottom-right)
+  u.push(mkUnit({ type: "INF", team: TEAM.BLUE, x: W - 1, y: H - 1 }));
+  u.push(mkUnit({ type: "TANK", team: TEAM.BLUE, x: W - 2, y: H - 2 }));
+  u.push(mkUnit({ type: "ARTY", team: TEAM.BLUE, x: W - 3, y: H - 1 }));
+  return u;
+}
+
+// ====== HELPERS ======
+function inBounds(x, y) {
+  return x >= 0 && y >= 0 && x < W && y < H;
+}
+
+function key(x, y) { return `${x},${y}`; }
+
+function manhattan(a, b) { return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
+
+function unitAt(units, x, y) {
+  return units.find((u) => u.x === x && u.y === y);
+}
+
+function cloneUnits(units) {
+  return units.map((u) => ({ ...u }));
+}
+
+function teamUnits(units, teamKey) {
+  return units.filter((u) => u.team === teamKey);
+}
+
+function enemyUnits(units, teamKey) {
+  return units.filter((u) => u.team !== teamKey);
+}
+
+function getTerrain(grid, x, y) { return grid[y][x]; }
+
+// BFS to compute reachable tiles given movement points and blocking units/impassable terrain
+function computeReachable(grid, units, from, movePoints, teamKey) {
+  const frontier = [{ x: from.x, y: from.y, cost: 0 }];
+  const visited = new Map();
+  visited.set(key(from.x, from.y), 0);
+  const occupied = new Set(units.map((u) => key(u.x, u.y)));
+
+  while (frontier.length) {
+    const cur = frontier.shift();
+    const dirs = [ [1,0],[-1,0],[0,1],[0,-1] ];
+    for (const [dx, dy] of dirs) {
+      const nx = cur.x + dx, ny = cur.y + dy;
+      if (!inBounds(nx, ny)) continue;
+      const tile = getTerrain(grid, nx, ny);
+      if (tile.moveCost >= 999) continue; // impassable
+      const nextCost = cur.cost + tile.moveCost;
+      if (nextCost > movePoints) continue;
+      const k = key(nx, ny);
+      const prev = visited.get(k);
+      // cannot move through other units, but you may END on empty tiles only
+      if (occupied.has(k) && !(nx === from.x && ny === from.y)) continue;
+      if (prev == null || nextCost < prev) {
+        visited.set(k, nextCost);
+        frontier.push({ x: nx, y: ny, cost: nextCost });
+      }
+    }
+  }
+  // All keys in visited are reachable; remove the origin for display purposes
+  visited.delete(key(from.x, from.y));
+  return visited; // Map<"x,y", cost>
+}
+
+function tilesInRange(from, minR, maxR) {
+  const res = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = Math.abs(from.x - x) + Math.abs(from.y - y);
+      if (d >= minR && d <= maxR) res.push({ x, y });
+    }
+  }
+  return res;
+}
+
+function calcDamage(attacker, defender, grid) {
+  const atkType = UNIT_TYPES[attacker.type];
+  const defType = UNIT_TYPES[defender.type];
+  const base = atkType.atk[defType.key] ?? 40;
+  const attackHP = attacker.hp; // scale with hp (0-10)
+  const terrainDef = getTerrain(grid, defender.x, defender.y).defense;
+  // Simple formula similar in spirit to Advance Wars: damage% = base * (HP/10) * (1 - 0.05*def)
+  const reduction = Math.max(0, 1 - 0.05 * terrainDef);
+  const dmgPct = Math.round((base * (attackHP / 10)) * reduction);
+  // Convert percent-of-10HP to HP damage (out of 10). Clamp 0..10.
+  const hpLoss = Math.min(10, Math.max(1, Math.round(dmgPct / 10)));
+  return hpLoss;
+}
+
+function endTurnRefresh(units, teamKey) {
+  return units.map((u) => {
+    if (u.team === teamKey) return { ...u, moved: false, acted: false };
+    return u;
+  });
+}
+
+function removeDead(units) {
+  return units.filter((u) => u.hp > 0);
+}
+
+// ====== UI COMPONENT ======
+export default function BattleWarsLike() {
+  const grid = useMemo(parseMap, []);
+  const [units, setUnits] = useState(initialUnits);
+  const [turn, setTurn] = useState(TEAM.RED.key);
+  const [selectedId, setSelectedId] = useState(null);
+  const [reachable, setReachable] = useState(new Map());
+  const [phase, setPhase] = useState("idle"); // idle | moving | targeting
+  const [moveFrom, setMoveFrom] = useState(null);
+  const [moveTo, setMoveTo] = useState(null);
+  const [winner, setWinner] = useState(null);
+
+  useEffect(() => {
+    const redLeft = teamUnits(units, TEAM.RED.key).length;
+    const blueLeft = teamUnits(units, TEAM.BLUE.key).length;
+    if (redLeft === 0) setWinner(TEAM.BLUE.key);
+    else if (blueLeft === 0) setWinner(TEAM.RED.key);
+  }, [units]);
+
+  const selected = units.find((u) => u.id === selectedId) || null;
+
+  function onTileClick(x, y) {
+    if (winner) return;
+    const u = unitAt(units, x, y);
+
+    // Selecting a unit
+    if (phase === "idle") {
+      if (u && u.team === turn && !u.acted) {
+        setSelectedId(u.id);
+        const t = UNIT_TYPES[u.type];
+        const reach = computeReachable(grid, units, u, t.move, turn);
+        setReachable(reach);
+        setPhase("moving");
+        setMoveFrom({ x: u.x, y: u.y });
+      } else {
+        // Clicked empty tile or enemy → clear selection
+        setSelectedId(null);
+        setReachable(new Map());
+      }
+      return;
+    }
+
+    // Moving phase – click on a reachable empty tile to move
+    if (phase === "moving" && selected) {
+      const k = key(x, y);
+      const occupied = unitAt(units, x, y);
+      if (reachable.has(k) && !occupied) {
+        // perform move
+        const next = cloneUnits(units);
+        const me = next.find((uu) => uu.id === selected.id);
+        me.x = x; me.y = y; me.moved = true;
+        setUnits(next);
+        setSelectedId(me.id);
+        setMoveTo({ x, y });
+        setPhase("targeting");
+        // In targeting phase, we keep selection and show attackables
+      } else if (u && u.id === selected.id) {
+        // Re-click original unit to cancel
+        setPhase("idle");
+        setSelectedId(null);
+        setReachable(new Map());
+      }
+      return;
+    }
+
+    // Targeting phase – click enemy in range to attack, or empty tile to finish
+    if (phase === "targeting" && selected) {
+      if (u && u.team !== turn) {
+        const atkType = UNIT_TYPES[selected.type];
+        const d = manhattan(selected, u);
+        if (d >= atkType.minRange && d <= atkType.maxRange) {
+          // Attack!
+          const next = cloneUnits(units);
+          const me = next.find((uu) => uu.id === selected.id);
+          const foe = next.find((uu) => uu.id === u.id);
+          const dmg = calcDamage(me, foe, grid);
+          foe.hp = Math.max(0, foe.hp - dmg);
+          me.acted = true;
+          setUnits(removeDead(next));
+          setSelectedId(null);
+          setReachable(new Map());
+          setPhase("idle");
+          return;
+        }
+      }
+      // If clicked elsewhere, just finish action without attacking
+      const next = cloneUnits(units);
+      const me = next.find((uu) => uu.id === selected.id);
+      if (me) me.acted = true;
+      setUnits(next);
+      setSelectedId(null);
+      setReachable(new Map());
+      setPhase("idle");
+    }
+  }
+
+  function endTurn() {
+    if (winner) return;
+    const nextTeam = turn === TEAM.RED.key ? TEAM.BLUE.key : TEAM.RED.key;
+    setUnits((prev) => endTurnRefresh(prev, nextTeam));
+    setTurn(nextTeam);
+    setSelectedId(null);
+    setReachable(new Map());
+    setPhase("idle");
+  }
+
+  function resetGame() {
+    idCounter = 1;
+    setUnits(initialUnits());
+    setTurn(TEAM.RED.key);
+    setSelectedId(null);
+    setReachable(new Map());
+    setPhase("idle");
+    setWinner(null);
+  }
+
+  // Derived UI helpers
+  const highlight = useMemo(() => {
+    const set = new Set();
+    for (const k of reachable.keys()) set.add(k);
+    return set;
+  }, [reachable]);
+
+  function tileClasses(x, y) {
+    const tile = grid[y][x];
+    const k = key(x, y);
+    const u = unitAt(units, x, y);
+    const isReach = highlight.has(k) && !u;
+    const base = "relative flex items-center justify-center border border-gray-200 text-xs md:text-sm select-none";
+    const size = "w-10 h-10 md:w-14 md:h-14";
+    let bg = "bg-emerald-50"; // plains default
+    if (tile.key === "FOREST") bg = "bg-green-200";
+    if (tile.key === "ROAD") bg = "bg-yellow-100";
+    if (tile.key === "CITY") bg = "bg-slate-200";
+    if (tile.key === "MOUNTAIN") bg = "bg-stone-300";
+    const hover = "hover:ring-2 hover:ring-indigo-400";
+    const reach = isReach ? "ring-2 ring-indigo-500" : "";
+    return `${base} ${size} ${bg} ${hover} ${reach}`;
+  }
+
+  function UnitBadge({ u }) {
+    const t = UNIT_TYPES[u.type];
+    const color = u.team === TEAM.RED.key ? TEAM.RED.color : TEAM.BLUE.color;
+    const acted = u.acted ? "opacity-50" : "";
+    return (
+      <div className={`absolute inset-0 flex items-center justify-center ${acted}`}>
+        <div className="flex flex-col items-center">
+          <div className="rounded-full px-2 py-1 text-white text-xs" style={{ backgroundColor: color }}>
+            {t.emoji}
+          </div>
+          <div className="mt-1 text-[10px] md:text-xs font-semibold">HP {u.hp}</div>
         </div>
       </div>
-      <div id="ret" class="reticle" style="display:none"></div>
+    );
+  }
+
+  function Sidebar() {
+    const sel = selected;
+    const myUnits = teamUnits(units, turn).length;
+    const enemy = enemyUnits(units, turn).length;
+    return (
+      <div className="w-full md:w-64 p-3 md:p-4 bg-white/70 backdrop-blur rounded-2xl shadow space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-sm md:text-base font-bold">Turn: <span className="px-2 py-0.5 rounded text-white" style={{backgroundColor: turn===TEAM.RED.key?TEAM.RED.color:TEAM.BLUE.color}}>{turn}</span></div>
+          <button onClick={resetGame} className="text-xs md:text-sm px-2 py-1 rounded-lg border hover:bg-slate-50">Reset</button>
+        </div>
+        {winner ? (
+          <div className="p-3 rounded-xl bg-lime-100 text-lime-900 font-semibold">Winner: {winner}</div>
+        ) : (
+          <button onClick={endTurn} className="w-full px-3 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">End Turn</button>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="p-2 rounded-lg bg-red-50">Red: {turn===TEAM.RED.key?"(active) ":""}{turn===TEAM.RED.key?myUnits:enemy}</div>
+          <div className="p-2 rounded-lg bg-blue-50">Blue: {turn===TEAM.BLUE.key?"(active) ":""}{turn===TEAM.BLUE.key?myUnits:enemy}</div>
+        </div>
+
+        <div className="text-sm md:text-base font-semibold">Selected</div>
+        {sel ? (
+          <div className="text-xs md:text-sm p-2 rounded-xl bg-slate-100 space-y-1">
+            <div><b>{sel.team}</b> {UNIT_TYPES[sel.type].name}</div>
+            <div>HP: {sel.hp}</div>
+            <div>Move: {UNIT_TYPES[sel.type].move}</div>
+            <div>Range: {UNIT_TYPES[sel.type].minRange}–{UNIT_TYPES[sel.type].maxRange}</div>
+            <div>Status: {sel.acted ? "Done" : sel.moved ? "Moved" : phase}</div>
+            <div>Pos: ({sel.x},{sel.y})</div>
+            <div className="text-[11px] text-slate-600">Tip: 移動後に敵マスをクリックすると攻撃します。空マスをクリックすると行動終了。</div>
+          </div>
+        ) : (
+          <div className="text-xs md:text-sm p-2 rounded-xl bg-slate-50 text-slate-600">ユニットを選択してください</div>
+        )}
+
+        <div className="text-sm md:text-base font-semibold">Terrain legend</div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {TERRAIN_KEYS.map((k) => (
+            <div key={k} className="p-2 rounded-lg bg-slate-50 flex items-center justify-between">
+              <span>{TERRAIN[k].name}</span>
+              <span className="text-slate-500">{TERRAIN[k].emoji}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen w-full bg-gradient-to-b from-sky-50 to-slate-100 p-3 md:p-6">
+      <div className="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-[1fr_260px] gap-4">
+        <div className="rounded-2xl bg-white p-2 md:p-4 shadow">
+          <div className="text-base md:text-lg font-bold mb-2 md:mb-3">Battle Wars – Mini</div>
+          <div className="grid" style={{ gridTemplateColumns: `repeat(${W}, minmax(0,1fr))` }}>
+            {Array.from({ length: H }).map((_, y) => (
+              <React.Fragment key={`row-${y}`}>
+                {Array.from({ length: W }).map((__, x) => {
+                  const u = unitAt(units, x, y);
+                  const t = grid[y][x];
+                  return (
+                    <div
+                      key={`t-${x}-${y}`}
+                      className={tileClasses(x, y)}
+                      onClick={() => onTileClick(x, y)}
+                      title={`${t.name}  DEF+${t.defense}  MC${t.moveCost}`}
+                    >
+                      <div className="absolute left-1 top-1 text-[10px] text-slate-500">{t.emoji}</div>
+                      {u && <UnitBadge u={u} />}
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="mt-3 text-xs md:text-sm text-slate-600">
+            使い方：自軍（ターン表示の色）のユニットをクリック → 青いハイライトのマスへ移動 → 敵ユニットをクリックで攻撃 → 「End Turn」で相手へ交代。
+          </div>
+        </div>
+        <Sidebar />
+      </div>
     </div>
-  </div>
-
-  <footer>© 2025 SpotDiff — Generative anime-style / Static / 3 differences</footer>
-</div>
-
-<script>
-(function(){
-  // ===== 基本設定 =====
-  const canL=document.getElementById('canL'), canR=document.getElementById('canR');
-  const ctxL=canL.getContext('2d'), ctxR=canR.getContext('2d');
-  const startBtn=document.getElementById('startBtn'), startBig=document.getElementById('startBig');
-  const revealBtn=document.getElementById('revealBtn'), menu=document.getElementById('menu');
-  const boardR=document.getElementById('boardR'), ret=document.getElementById('ret');
-  const remainEl=document.getElementById('remain'), missEl=document.getElementById('miss'), timeEl=document.getElementById('time');
-
-  const DIFF_COUNT=3, AUTO_REVEAL_TIME=60000, AUTO_REVEAL_MISS=6, NEAR_FACTOR=1.5;
-  const W=1400, H=840;         // ちょい広め（描き込みの余地）
-  const SHOW_START_HINT=false; // 初期ヒントのリングは出さない
-
-  let diffs=[], found=0, missCount=0, revealed=false;
-  let timerId=null, tStart=0, autoRevealTimer=null, introPulseUntil=0;
-
-  // ===== ユーティリティ（ノイズ類）=====
-  function rng(seed){ // 線形合同法
-    let s = seed>>>0 || (Math.random()*0x7fffffff)|0;
-    return ()=> (s = (s*1664525+1013904223)>>>0) / 0x100000000;
-  }
-  function hash(x,y){ return Math.abs(Math.sin(x*127.1+y*311.7)*43758.5453)%1; }
-  function smoothstep(a,b,t){ t=Math.max(0,Math.min(1,(t-a)/(b-a))); return t*t*(3-2*t); }
-  function vnoise(x,y,scale=64){
-    const xi=Math.floor(x/scale), yi=Math.floor(y/scale);
-    const xf=(x/scale)-xi, yf=(y/scale)-yi;
-    const v00=hash(xi,yi), v10=hash(xi+1,yi), v01=hash(xi,yi+1), v11=hash(xi+1,yi+1);
-    const i1=v00+(v10-v00)*smoothstep(0,1,xf);
-    const i2=v01+(v11-v01)*smoothstep(0,1,xf);
-    return i1+(i2-i1)*smoothstep(0,1,yf);
-  }
-  function fbm(x,y,oct=5,base=90,gain=0.5,lac=2.03){
-    let amp=1, freq=1/base, sum=0, norm=0;
-    for(let i=0;i<oct;i++){
-      sum += amp * vnoise(x*freq*base, y*freq*base, base);
-      norm += amp; amp*=gain; freq*=lac;
-    }
-    return sum/norm;
-  }
-
-  // ===== キャンバス準備 =====
-  function setupCanvas(canvas, ctx){
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    canvas.style.width=Math.min(640, W)+'px';
-    const scale=W/H, cssW=canvas.clientWidth||Math.min(640,W), cssH=Math.round(cssW/scale);
-    canvas.style.height=cssH+'px';
-    canvas.width=Math.round(W*dpr); canvas.height=Math.round(H*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,canvas.width/dpr,canvas.height/dpr);
-  }
-
-  // ===== 高密度アニメ背景（多層レイヤ）=====
-  function paintGenerativeAnime(ctx, seed=0){
-    const rnd=rng(seed);
-    // 0) ベースのカラーグレーディング感（影色に青、ハイライトに黄）
-    ctx.fillStyle='#dfe9f7'; ctx.fillRect(0,0,W,H);
-
-    // 1) 空：多重グラデ＋fbm雲＋ゴッドレイ＋遠景ハイライト
-    let skyG=ctx.createLinearGradient(0,0,0,H*0.72);
-    skyG.addColorStop(0,'#8ec9ff'); skyG.addColorStop(0.55,'#bfe1ff'); skyG.addColorStop(1,'#edf6ff');
-    ctx.fillStyle=skyG; ctx.fillRect(0,0,W,H*0.72);
-
-    const sunX=W*0.78, sunY=H*0.22, sunR=80;
-    let sunRim=ctx.createRadialGradient(sunX,sunY,0,sunX,sunY,sunR*4.2);
-    sunRim.addColorStop(0,'rgba(255,230,150,0.90)');
-    sunRim.addColorStop(0.25,'rgba(255,230,150,0.55)');
-    sunRim.addColorStop(1,'rgba(255,230,150,0)');
-    ctx.fillStyle=sunRim; ctx.beginPath(); ctx.arc(sunX,sunY,sunR*4.2,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='#ffd36b'; ctx.beginPath(); ctx.arc(sunX,sunY,sunR,0,Math.PI*2); ctx.fill();
-
-    // ゴッドレイ（薄い扇形ラインを積層）
-    ctx.save(); ctx.globalAlpha=0.12; ctx.strokeStyle='#ffe7a6'; ctx.lineWidth=28;
-    for(let k=0;k<8;k++){
-      const a=(k-3.5)*0.12 + 0.04*rnd();
-      ctx.beginPath(); ctx.moveTo(sunX,sunY);
-      ctx.lineTo(sunX + Math.cos(a)*W*1.2, sunY + Math.sin(a)*H*1.0); ctx.stroke();
-    }
-    ctx.restore();
-
-    // fbm雲レイヤ（2層）
-    function cloudLayer(heightFrac, tint, base, oct, alpha){
-      ctx.save(); ctx.globalAlpha=alpha; ctx.fillStyle=tint;
-      const top=0, bottom=H*heightFrac;
-      for(let y=top;y<bottom;y+=4){
-        ctx.beginPath();
-        for(let x=0;x<=W;x+=4){
-          const n=fbm(x+seed*2000, y+seed*800, oct, base, 0.55, 2.08);
-          const py=y - (n-0.5)*32;
-          if(x===0) ctx.moveTo(x,py); else ctx.lineTo(x,py);
-        }
-        ctx.lineTo(W,top); ctx.lineTo(0,top); ctx.closePath(); ctx.fill();
-      }
-      ctx.restore();
-    }
-    cloudLayer(0.48,'#ffffff', 110, 5, 0.65);
-    cloudLayer(0.40,'#ffffff', 70,  4, 0.55);
-
-    // 2) 遠景の山：多重稜線＋ノイズで輪郭揺らぎ
-    for(let i=0;i<5;i++){
-      const by=H*0.66 + i*18;
-      ctx.fillStyle=`hsl(${182+i*9}, 28%, ${34+i*5}%)`;
-      ctx.beginPath(); ctx.moveTo(0,by);
-      for(let x=0;x<=W;x+=18){
-        const y = by - 46*Math.sin((x/220)+(i*0.7)) - 12*fbm(x, i*260+seed*300, 4, 80, 0.6, 2.0);
-        ctx.lineTo(x,y);
-      }
-      ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath(); ctx.fill();
-    }
-
-    // 3) 中景：神社コンポーネント（鳥居、石灯籠、橋、五重塔）
-    drawTorii(ctx, W*0.20, H*0.62, 240, 180);
-    drawPagoda(ctx, W*0.73, H*0.58, 280, 5);
-    drawStoneLantern(ctx, W*0.36, H*0.66, 80);
-    drawBridge(ctx, W*0.56, H*0.68, 360, 90);
-
-    // 4) 地面：棚田/草地＋石畳（乱形）＋AO風ドロー
-    let landG=ctx.createLinearGradient(0,H*0.58,0,H);
-    landG.addColorStop(0,'#78d27f'); landG.addColorStop(1,'#3ea761');
-    ctx.fillStyle=landG; ctx.fillRect(0,H*0.58,W,H*0.42);
-
-    // 乱形石畳（Voronoi風）
-    ctx.save(); ctx.translate(W*0.08, H*0.7);
-    ctx.lineWidth=1.5; ctx.strokeStyle='rgba(30,50,50,0.35)';
-    const cells=220, rw=W*0.84, rh=H*0.24;
-    const pts=[]; for(let i=0;i<cells;i++){ pts.push({x:rnd()*rw, y:rnd()*rh}); }
-    for(const p of pts){
-      const wv=14+rnd()*26, hv=10+rnd()*18;
-      roundedRect(ctx, p.x-wv/2, p.y-hv/2, wv, hv, 3+rnd()*4, false); ctx.stroke();
-    }
-    ctx.restore();
-
-    // 5) 水面（池）：反射＋caustics風ノイズ＋岸のハイライト
-    const pond={x:W*0.58,y:H*0.73, rw:W*0.34, rh:H*0.22};
-    const pg=ctx.createRadialGradient(pond.x, pond.y, 10, pond.x, pond.y, Math.max(pond.rw,pond.rh));
-    pg.addColorStop(0,'rgba(70,160,210,0.95)'); pg.addColorStop(1,'rgba(20,60,100,0.98)');
-    ctx.fillStyle=pg; roundedRect(ctx, pond.x-pond.rw/2, pond.y-pond.rh/2, pond.rw, pond.rh, 28, true);
-
-    ctx.save(); ctx.globalAlpha=0.18;
-    for(let i=0;i<220;i++){
-      const ang=rnd()*Math.PI*2, r=pond.rw*0.48*rnd();
-      const ex=pond.x + Math.cos(ang)*r, ey=pond.y + (Math.sin(ang)*r*pond.rh/pond.rw);
-      ctx.strokeStyle='#e6f3ff'; ctx.lineWidth=1.6;
-      ctx.beginPath(); ctx.ellipse(ex,ey, 22+rnd()*18, 8+rnd()*7, rnd()*Math.PI, 0, 2*Math.PI); ctx.stroke();
-    }
-    ctx.restore();
-
-    // 6) 桜：密な花びら（Poisson風）＋樹冠のレイヤ合成
-    for(let i=0;i<4;i++){
-      const bx = 130 + i*120, by = H*0.60 + (i%2)*16;
-      drawRichSakura(ctx, bx, by, 1.1 + i*0.08, seed+i*11);
-    }
-
-    // 7) 草の前景（ブレード大量）＋紙質ハッチ
-    ctx.save(); ctx.strokeStyle='rgba(20,60,30,0.38)';
-    for(let i=0;i<400;i++){
-      const x = (i*37 + seed*101) % W;
-      const y = H*0.92 - (i%3)*8 - 9*vnoise(i*20, seed*300+i*11, 40);
-      ctx.beginPath(); ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x+6, y-20, x+1, y-40 - (i%5)*3);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // 8) 薄いアウトライン（アニメ線画風）
-    ctx.save(); ctx.globalAlpha=0.18; ctx.fillStyle='#000';
-    for(let y=0;y<H;y+=6){ ctx.fillRect(0,y,W,1); } // 横ハッチ
-    ctx.globalAlpha=0.08;
-    for(let x=0;x<W;x+=6){ ctx.fillRect(x,0,1,H); } // 縦ハッチ
-    ctx.restore();
-
-    // 9) ヴィネット＋色味寄せ（黄−青補正）
-    ctx.save();
-    let vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.2, W/2,H/2,Math.max(W,H)*0.7);
-    vg.addColorStop(0,'rgba(0,0,0,0)');
-    vg.addColorStop(1,'rgba(0,0,0,0.25)');
-    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
-    ctx.globalCompositeOperation='overlay';
-    ctx.fillStyle='rgba(255,230,150,0.05)'; ctx.fillRect(0,0,W,H);
-    ctx.globalCompositeOperation='multiply';
-    ctx.fillStyle='rgba(140,170,255,0.04)'; ctx.fillRect(0,0,W,H);
-    ctx.restore();
-  }
-
-  // ===== 部品描画 =====
-  function roundedRect(ctx,x,y,w,h,r,fill){
-    const rr=Math.min(r,w/2,h/2);
-    ctx.beginPath();
-    ctx.moveTo(x+rr,y);
-    ctx.arcTo(x+w,y,x+w,y+h,rr);
-    ctx.arcTo(x+w,y+h,x,y+h,rr);
-    ctx.arcTo(x,y+h,x,y,rr);
-    ctx.arcTo(x,y,x+w,y,rr);
-    fill?ctx.fill():ctx.stroke();
-  }
-
-  function drawTorii(ctx,x,y,w,h){
-    ctx.save(); ctx.translate(x,y);
-    ctx.fillStyle='#c53b2f'; ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=4;
-    roundedRect(ctx, -w*0.5, -h*0.15, w, h*0.18, 12, true);
-    roundedRect(ctx, -w*0.42, h*0.15, w*0.84, h*0.12, 10, true);
-    roundedRect(ctx, -w*0.36, h*0.05, w*0.18, h*0.9, 10, true);
-    roundedRect(ctx,  w*0.18, h*0.05, w*0.18, h*0.9, 10, true);
-    ctx.restore();
-  }
-  function drawPagoda(ctx,x,y,w,floors){
-    ctx.save(); ctx.translate(x,y);
-    for(let i=0;i<floors;i++){
-      const s = 1 - i*0.12, ww=w*s, hh=26;
-      ctx.fillStyle=`hsl(${200-i*10},30%,${24+i*4}%)`;
-      ctx.beginPath();
-      ctx.moveTo(-ww/2, i*42);
-      ctx.bezierCurveTo(-ww*0.55, i*42-22, ww*0.55, i*42-22, ww/2, i*42);
-      ctx.lineTo(ww/2, i*42+hh);
-      ctx.bezierCurveTo(ww*0.55, i*42+hh-6, -ww*0.55, i*42+hh-6, -ww/2, i*42+hh);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle='#ece9dc';
-      roundedRect(ctx, -ww*0.22, i*42+hh, ww*0.44, 26, 6, true);
-    }
-    ctx.fillStyle='#555'; ctx.fillRect(-4, -44, 8, 44);
-    ctx.beginPath(); ctx.arc(0,-46,10,0,Math.PI*2); ctx.fill();
-    ctx.restore();
-  }
-  function drawStoneLantern(ctx,x,y,h){
-    ctx.save(); ctx.translate(x,y);
-    ctx.fillStyle='#9aa3a4';
-    roundedRect(ctx,-h*0.18,0,h*0.36,h*0.4,6,true);
-    roundedRect(ctx,-h*0.30,-h*0.18,h*0.60,h*0.12,8,true);
-    roundedRect(ctx,-h*0.22,-h*0.44,h*0.44,h*0.26,8,true);
-    roundedRect(ctx,-h*0.36,-h*0.56,h*0.72,h*0.14,10,true);
-    ctx.restore();
-  }
-  function drawBridge(ctx,x,y,w,h){
-    ctx.save(); ctx.translate(x,y);
-    ctx.fillStyle='#c37a4a';
-    ctx.beginPath(); ctx.moveTo(-w/2,0); ctx.quadraticCurveTo(0,-h,w/2,0);
-    ctx.lineTo(w/2,18); ctx.quadraticCurveTo(0,-h+18,-w/2,18); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=3;
-    for(let i=0;i<=12;i++){
-      const t=i/12, px=-w/2 + w*t, py= 0 - h*(1-Math.pow(1-Math.abs(t-0.5)*2,2));
-      ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+26); ctx.stroke();
-    }
-    ctx.restore();
-  }
-  function drawRichSakura(ctx,x,y,s,seed=0){
-    // 幹
-    ctx.fillStyle='#6a3f22'; roundedRect(ctx,x-10*s,y,20*s,94*s,8*s,true);
-    // 冠（階調レイヤ）
-    const cols=['#ffc8da','#ffd1e3','#ffe0ec'];
-    cols.forEach((c,i)=>{ ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x+(i-1)*28*s, y-10*s+(i%2)*14*s, (56-6*i)*s, 0, Math.PI*2); ctx.fill(); });
-    // 花びら密度（Poisson-ish）
-    const rnd=rng(seed); ctx.save(); ctx.globalAlpha=0.9; ctx.fillStyle='#ffe6f1';
-    const petals=260;
-    for(let i=0;i<petals;i++){
-      const ang = rnd()*Math.PI*2, r = 18 + (i%9)*6 + rnd()*8;
-      const px = x + Math.cos(ang)*r*s + (rnd()-0.5)*12;
-      const py = y - 8*s + Math.sin(ang)*r*s + (rnd()-0.5)*10;
-      ctx.beginPath(); ctx.ellipse(px,py, 4.5+rnd()*1.8, 2.2+rnd()*1.1, ang, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  // ===== 差分（右だけ：大きめ／見つけやすいが単純すぎない）=====
-  function placeDifferences(ctx){
-    diffs=[];
-    const RMIN=80, RMAX=130, MARGIN=150; // 大きめ
-    for(let i=0;i<DIFF_COUNT;i++){
-      const r=Math.floor(RMIN+Math.random()*(RMAX-RMIN));
-      const x=Math.floor(MARGIN+Math.random()*(W-MARGIN*2));
-      const y=Math.floor(MARGIN+Math.random()*(H-MARGIN*2));
-      diffs.push({x,y,r,found:false});
-    }
-
-    // 色相/彩度/明度の複合変化＋模様（和文様っぽい）を重ねて「目立ちすぎず目に付く」差分に
-    const imgData=ctx.getImageData(0,0,W,H), arr=imgData.data;
-    function inCircle(cx,cy,cr,px,py){const dx=px-cx, dy=py-cy; return dx*dx+dy*dy<=cr*cr;}
-    function rgb2hsl(r,g,b){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b);
-      let h,s,l=(max+min)/2; if(max===min){h=s=0;} else {const d=max-min; s=l>0.5?d/(2-max-min):d/(max+min);
-      switch(max){case r:h=(g-b)/d+(g<b?6:0);break;case g:h=(b-r)/d+2;break;case b:h=(r-g)/d+4;break;} h/=6;} return [h,s,l];}
-    function hsl2rgb(h,s,l){
-      function hue2rgb(p,q,t){if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3 - t)*6;return p;}
-      let r,g,b; if(s===0){r=g=b=l;} else {const q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q; r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3);}
-      return[Math.round(r*255),Math.round(g*255),Math.round(b*255)];
-    }
-
-    diffs.forEach((d,idx)=>{
-      const hueShift=((idx+1)*0.11)*(Math.random()<0.5?-1:1);
-      const lightDelta=(Math.random()*0.20-0.10);
-      const satDelta=(Math.random()*0.32-0.16);
-      for(let py=d.y-d.r; py<=d.y+d.r; py++){
-        if(py<0||py>=H) continue;
-        for(let px=d.x-d.r; px<=d.x+d.r; px++){
-          if(px<0||px>=W) continue;
-          if(!inCircle(d.x,d.y,d.r,px,py)) continue;
-          const i=(py*W+px)*4; const r=arr[i], g=arr[i+1], b=arr[i+2];
-          let [hh,ss,ll]=rgb2hsl(r,g,b);
-          hh=(hh+hueShift+1)%1; ll=Math.max(0,Math.min(1,ll+lightDelta)); ss=Math.max(0,Math.min(1,ss+satDelta));
-          const [nr,ng,nb]=hsl2rgb(hh,ss,ll); arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb;
-        }
-      }
-      // 和文様スタンプ（青海波/麻の葉/矢絣ふうの簡易パターン）
-      ctx.save(); ctx.globalAlpha=0.22;
-      const pat = ['seigaiha','asanoha','yagasuri'][idx%3];
-      drawPattern(ctx, pat, d.x, d.y, d.r);
-      ctx.restore();
-    });
-    ctx.putImageData(imgData,0,0);
-    if(SHOW_START_HINT){ introPulseUntil = performance.now() + 2000; } // 今回はfalse設定
-  }
-
-  function drawPattern(ctx, type, cx, cy, r){
-    ctx.save(); ctx.translate(cx,cy);
-    if(type==='seigaiha'){ // 同心半円の波
-      ctx.strokeStyle='#ffffff'; ctx.lineWidth=2.2;
-      for(let k=0;k<7;k++){
-        const rr = r*0.2 + k*r*0.12;
-        for(let a=-Math.PI; a<=0; a+=Math.PI/12){
-          ctx.beginPath();
-          ctx.arc(0,0, rr, a, a+Math.PI/12);
-          ctx.stroke();
-        }
-      }
-    }else if(type==='asanoha'){ // 麻の葉（三角格子）
-      ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=2;
-      const s=r*0.22;
-      for(let y=-r;y<=r;y+=s){
-        for(let x=-r;x<=r;x+=s){
-          ctx.beginPath();
-          ctx.moveTo(x,y); ctx.lineTo(x+s,y);
-          ctx.lineTo(x+s*0.5,y+s*0.866); ctx.closePath(); ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(x+s,y); ctx.lineTo(x+s*1.5,y+s*0.866);
-          ctx.lineTo(x+s*0.5,y+s*0.866); ctx.closePath(); ctx.stroke();
-        }
-      }
-    }else{ // yagasuri（矢絣）
-      ctx.fillStyle='rgba(255,255,255,0.45)';
-      const s=r*0.22;
-      for(let y=-r;y<=r;y+=s*1.2){
-        for(let x=-r;x<=r;x+=s*1.2){
-          ctx.beginPath();
-          ctx.moveTo(x, y); ctx.lineTo(x+s*0.7, y+s*0.35); ctx.lineTo(x, y+s*0.7); ctx.closePath(); ctx.fill();
-        }
-      }
-    }
-    ctx.restore();
-  }
-
-  // ===== 進行管理 =====
-  function fmtTime(ms){const s=Math.floor(ms/1000);return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
-  function startTimer(){clearInterval(timerId);tStart=performance.now();timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250);
-    clearTimeout(autoRevealTimer);autoRevealTimer=setTimeout(()=>revealAnswers(true),AUTO_REVEAL_TIME);}
-  function stopTimer(){clearInterval(timerId);clearTimeout(autoRevealTimer);}
-
-  // ===== 視覚フィードバック =====
-  function pulseRing(ctx,x,y,r,color){
-    ctx.save(); ctx.lineWidth=10; ctx.strokeStyle=color;
-    ctx.beginPath(); ctx.arc(x,y,r+18,0,Math.PI*2); ctx.stroke(); ctx.restore();
-  }
-  function bigCross(ctx,x,y,size,color){
-    const s=size; ctx.save(); ctx.lineWidth=9; ctx.strokeStyle=color; ctx.globalAlpha=.95;
-    ctx.beginPath(); ctx.moveTo(x-s,y-s); ctx.lineTo(x+s,y+s);
-    ctx.moveTo(x+s,y-s); ctx.lineTo(x-s,y+s); ctx.stroke(); ctx.restore();
-  }
-  function nearRing(ctx,x,y,r){
-    ctx.save(); ctx.lineWidth=8; ctx.setLineDash([14,12]); ctx.strokeStyle='var(--hint)';
-    ctx.beginPath(); ctx.arc(x,y,r*NEAR_FACTOR,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
-  }
-  function hintRings(ctx){
-    if(!SHOW_START_HINT || performance.now() >= introPulseUntil || revealed) return;
-    const a=0.18+0.12*Math.sin(performance.now()/160);
-    ctx.save(); ctx.globalAlpha=a; ctx.lineWidth=8; ctx.strokeStyle='var(--hint)';
-    diffs.forEach(d=>{ if(!d.found){ ctx.beginPath(); ctx.arc(d.x,d.y,d.r+16,0,Math.PI*2); ctx.stroke(); }});
-    ctx.restore();
-  }
-
-  function revealAnswers(auto=false){
-    stopTimer(); revealed=true;
-    ctxR.save(); ctxR.lineWidth=10; ctxR.strokeStyle='var(--hint)'; ctxR.globalAlpha=.95;
-    diffs.forEach(d=>{ if(!d.found){ ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+22,0,Math.PI*2); ctxR.stroke(); }});
-    ctxR.restore();
-    remainEl.textContent=0;
-    setTimeout(()=>alert(auto?'時間/ミス上限で答えを表示しました。スタートで再挑戦できます。':'答えを表示しました。スタートで再挑戦できます。'),10);
-  }
-
-  // ===== メインフロー =====
-  function drawBoth(seed){
-    paintGenerativeAnime(ctxL, seed);
-    paintGenerativeAnime(ctxR, seed); // 左右同seedで一致
-  }
-
-  async function startGame(){
-    menu.style.display='none';
-    revealed=false; remainEl.textContent='-'; timeEl.textContent='00:00'; missEl.textContent='0';
-    stopTimer();
-
-    setupCanvas(canL, ctxL);
-    setupCanvas(canR, ctxR);
-
-    const seed = (Math.random()*1e9)|0;
-    drawBoth(seed);        // 背景生成
-    placeDifferences(ctxR);// 右に差分
-
-    found=0; missCount=0;
-    remainEl.textContent=(DIFF_COUNT-found);
-    startTimer();
-    hintRings(ctxR); // SHOW_START_HINT=false なので何も描かれない
-  }
-
-  function checkHit(px,py){
-    // CSS→実座標
-    const r=canR.getBoundingClientRect();
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    const scaleX=(canR.width/dpr)/r.width, scaleY=(canR.height/dpr)/r.height;
-    const x=(px - r.left)*scaleX, y=(py - r.top)*scaleY;
-
-    for(const d of diffs){
-      const dist=Math.hypot(x-d.x, y-d.y);
-      if(!d.found && dist<=d.r){
-        d.found=true; found++;
-        pulseRing(ctxR,d.x,d.y,d.r,'var(--good)');
-        remainEl.textContent=(DIFF_COUNT-found);
-        if(found===DIFF_COUNT){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
-        return;
-      }
-      if(!d.found && dist<=d.r*NEAR_FACTOR){ nearRing(ctxR,d.x,d.y,d.r); return; }
-    }
-    missCount++; missEl.textContent=missCount;
-    bigCross(ctxR,x,y,34,'var(--bad)');
-    boardR.classList.remove('shake'); void boardR.offsetWidth; boardR.classList.add('shake');
-    if(missCount>=AUTO_REVEAL_MISS){ revealAnswers(true); }
-  }
-
-  // ===== イベント =====
-  canR.addEventListener('click', e=>checkHit(e.clientX,e.clientY), {passive:true});
-  function moveReticle(e){
-    const r=canR.getBoundingClientRect();
-    const cx=(e.touches?e.touches[0].clientX:e.clientX);
-    const cy=(e.touches?e.touches[0].clientY:e.clientY);
-    if(cx<r.left||cx>r.right||cy<r.top||cy>r.bottom){ ret.style.display='none'; return; }
-    ret.style.display='block'; ret.style.left=(cx-r.left)+'px'; ret.style.top=(cy-r.top)+'px';
-  }
-  canR.addEventListener('mousemove',moveReticle,{passive:true});
-  canR.addEventListener('mouseleave',()=>{ ret.style.display='none'; });
-  canR.addEventListener('touchstart',moveReticle,{passive:true});
-  canR.addEventListener('touchmove',moveReticle,{passive:true});
-
-  document.getElementById('startBtn').onclick=startGame;
-  document.getElementById('revealBtn').onclick=()=>revealAnswers(false);
-  document.getElementById('startBig').onclick=startGame;
-
-  // 初期ガイド
-  menu.style.display='flex';
-})();
-</script>
-</body>
-</html>
+  );
+}
