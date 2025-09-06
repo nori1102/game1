@@ -49,14 +49,14 @@
     .card.playable{outline:4px solid #60d394}
     .card.disabled{opacity:.5;filter:grayscale(.3)}
 
-    .footer{margin-top:20px;font-size:.9rem;color:var(--muted)}
+    .footer{margin-top:20px;font-size:.9rem;color:#9aa6ff}
     table.score{width:100%;border-collapse:collapse;font-size:.95rem}
     .score th,.score td{padding:8px 10px;border-bottom:1px solid #1a285a;text-align:left}
 
     /* 残りカードトラッカー */
     .tracker{display:grid;gap:10px}
     .suitRow{background:#0c1330;border:1px solid #1d2a5a;border-radius:12px;padding:10px}
-    .suitHead{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:600;color:var(--accent2)}
+    .suitHead{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:600;color:#b7d0ff}
     .rgrid{display:grid;grid-template-columns:repeat(13,minmax(22px,1fr));gap:6px}
     .rchip{font-size:.9rem;display:grid;place-items:center;padding:6px 0;border-radius:8px;border:1px solid #27366d;background:#0e1736;color:#cfe0ff}
     .rchip.zero{opacity:.35;color:#8aa0ff;border-style:dashed}
@@ -88,7 +88,7 @@
     <div class="grid">
       <aside class="side">
         <div class="box">
-          <h2>ルール</h2>
+          <h2>ルール（Wikipedia準拠）</h2>
           <ul style="margin:6px 0 0 18px;line-height:1.6">
             <li>手札は常に<strong>5枚</strong>。最初の1枚は好きなカードを<strong>台札</strong>として出す。</li>
             <li>以後、<strong>台札の一番上</strong>と<strong>同じ絵柄</strong>または<strong>同じ番号</strong>のみ出せる。</li>
@@ -287,7 +287,7 @@
     document.querySelector("#hintBtn").addEventListener('click', ()=>{
       const pc = playableCards(); if(!pc.length) return;
       const labels = new Set(pc.map(c=>c.suit+c.rank));
-      document.querySelectorAll(".hand .card").forEach(el=>{ const lab = el.getAttribute('aria-label').replace(/\s/g,''); if(labels.has(lab)) el.classList.add('playable'); });
+      document.querySelectorAll(".hand .card").forEach(el=>{ const lab = (el.getAttribute('aria-label')||'').split(' ').join(''); if(labels.has(lab)) el.classList.add('playable'); });
     });
     document.querySelector("#deckMode").addEventListener('change', e=>{ st.deckMode = Number(e.target.value); startGame(); })
 
