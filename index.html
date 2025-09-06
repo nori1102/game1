@@ -35,11 +35,11 @@
     .row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
     .slot{min-width:100px;min-height:140px;border:2px dashed #23336d;border-radius:14px;display:grid;place-items:center;padding:8px}
 
-    /* 手札: 1列横スクロール（スマホ崩れを防止） */
-    .hand{display:flex;gap:12px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,#0d1536,#0a0f25);border:1px solid #172659;border-radius:16px;padding:12px;margin-top:20px}
-    .hand h3{flex:0 0 auto;margin:0 10px 8px 0;font-size:1rem;color:#cfe0ff}
+    /* 手札 */
+    .hand{display:flex;gap:12px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,#0d1536,#0a0f25);border:1px solid #172659;border-radius:16px;padding:12px;margin-top:20px;min-height:170px}
+    .handHeader{margin:6px 0 6px 0;font-size:1rem;color:#cfe0ff}
 
-    /* カード（さらに大きめ） */
+    /* カード（大きめ） */
     .card{flex:0 0 auto;width:110px;height:155px;border-radius:14px;background:var(--card);color:var(--card-text);position:relative;box-shadow:0 6px 14px var(--shadow);user-select:none}
     .card .rank{position:absolute;top:10px;left:10px;font-weight:700;font-size:1.6rem}
     .card .suit{position:absolute;bottom:10px;right:10px;font-size:1.6rem}
@@ -62,19 +62,14 @@
     .rchip.zero{opacity:.35;color:#8aa0ff;border-style:dashed}
     .rchip.full{background:#0d224a}
 
+    /* スマホではスクロール無しで5枚を1画面に */
     @media (max-width:520px){
-      .card{width:95px;height:135px}
+      .hand{flex-wrap:wrap;overflow-x:visible}
+      .card{width:calc((100% - 4*12px)/5);height:calc(((100% - 4*12px)/5) * 155 / 110)}
       .card .rank,.card .suit{font-size:1.4rem}
       .rgrid{grid-template-columns:repeat(13,26px)}
     }
-    .handHeader{margin:6px 0 6px 0;font-size:1rem;color:#cfe0ff}
-
-  /* スマホではスクロール無しで5枚を1画面に収める */
-  @media (max-width:520px){
-    .hand{flex-wrap:wrap;overflow-x:visible}
-    .card{width:calc((100% - 4*12px)/5);height:calc(((100% - 4*12px)/5) * 155 / 110)}
-  }
-</style>
+  </style>
 </head>
 <body>
   <header>
@@ -145,28 +140,32 @@
         </div>
 
         <div class="handHeader">あなたの手札</div>
-<div class="hand" id="hand"></div>
+        <div class="hand" id="hand" aria-live="polite"></div>
         <div class="footer">© COOL104 solitaire – 単一HTML。GitHub Pages に index.html として置くだけで動作します。</div>
       </section>
     </div>
   </main>
 
   <script>
+    // ===== ユーティリティ
     const SUITS = ["♠","♥","♦","♣"]; const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];  
     const $ = s=>document.querySelector(s); const $$ = s=>[...document.querySelectorAll(s)];
     const isRed = s=> s==="♥"||s==="♦";
     function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a }
     function makeDeck(){ const d=[]; for(const s of SUITS){ for(const r of RANKS){ d.push({suit:s,rank:r}); } } return d }
 
+    // ===== ゲーム状態
     const st = { deckMode:1, deckIndex:1, stock:[], waste:[], hand:[], playedCount:0, over:false, startAt:0 }
 
+    // ===== ルール判定
     function canPlayOn(top, card){ if(!top) return true; return top.suit===card.suit || top.rank===card.rank }
     function playableCards(){ const top = st.waste[st.waste.length-1]; return st.hand.filter(c=>canPlayOn(top,c)) }
 
+    // ===== 残りカードトラッカー（場に出た枚数を積算）
     const placedCounts = {}; for(const s of SUITS){ placedCounts[s] = {}; for(const r of RANKS){ placedCounts[s][r] = 0 } }
     function bumpPlaced(card){ placedCounts[card.suit][card.rank] += 1 }
     function renderTracker(){
-      const wrap = $("#tracker"); wrap.innerHTML = "";
+      const wrap = document.querySelector("#tracker"); wrap.innerHTML = "";
       const maxPerRank = st.deckMode===2 ? 2 : 1;
       for(const suit of SUITS){
         const box=document.createElement('div'); box.className='suitRow';
@@ -177,30 +176,39 @@
       }
     }
 
+    // ===== 描画
     function renderAll(){
       const top = st.waste[st.waste.length-1];
-      $("#topPill").textContent = `台札: ${top?top.suit+top.rank:"-"}`;
-      $("#scorePlayed").textContent = String(st.playedCount);
-      $("#scoreStock").textContent = String(st.stock.length);
-      $("#scoreDeck").textContent = `${st.deckIndex} / ${st.deckMode}`;
+      document.querySelector("#topPill").textContent = `台札: ${top?top.suit+top.rank:"-"}`;
+      document.querySelector("#scorePlayed").textContent = String(st.playedCount);
+      document.querySelector("#scoreStock").textContent = String(st.stock.length);
+      document.querySelector("#scoreDeck").textContent = `${st.deckIndex} / ${st.deckMode}`;
 
-      const handEl = $("#hand");
+      const handEl = document.querySelector("#hand");
       handEl.innerHTML = '';
       const playable = playableCards().map(x=>JSON.stringify(x));
       for(const c of st.hand.slice()){
         const el = cardView(c);
         if(st.over) el.classList.add('disabled');
         if(playable.includes(JSON.stringify(c))) el.classList.add('playable');
-        el.onclick = ()=>{ if(st.over) return; const topNow = st.waste[st.waste.length-1]; if(!canPlayOn(topNow, c)) return; playCard(c); }
+        el.onclick = ()=>{
+          if(st.over) return;
+          const topNow = st.waste[st.waste.length-1];
+          if(!canPlayOn(topNow, c)) return;
+          playCard(c);
+        }
         handEl.appendChild(el);
       }
 
-      const waste = $("#wasteSlot"); waste.innerHTML = ""; if(top){ waste.appendChild(cardView(top)); }
+      const waste = document.querySelector("#wasteSlot");
+      waste.innerHTML = "";
+      if(top){ waste.appendChild(cardView(top)); }
 
-      $("#tipsPill").textContent = playable.length? `出せるカード: ${playableCards().map(c=>c.suit+c.rank).join(' ')}` : '出せるカードなし';
-      $("#statePill").textContent = st.over ? '状態: 終了' : '状態: プレイ中';
+      document.querySelector("#tipsPill").textContent = playable.length? `出せるカード: ${playableCards().map(c=>c.suit+c.rank).join(' ')}` : '出せるカードなし';
+      document.querySelector("#statePill").textContent = st.over ? '状態: 終了' : '状態: プレイ中';
 
-      renderTracker(); renderHighScore();
+      renderTracker();
+      renderHighScore();
     }
 
     function cardView(c){
@@ -212,5 +220,85 @@
       return el;
     }
 
+    // ===== ロジック
     function startGame(){
-      st.deckIndex=1; st.playedCount=0; st.over=false; st.waste=[]; st.hand=[];
+      st.deckMode = Number(document.querySelector('#deckMode').value || 1);
+      st.deckIndex=1; st.playedCount=0; st.over=false; st.waste=[]; st.hand=[]; st.stock=[]; st.startAt=Date.now();
+      for(const s of SUITS){ for(const r of RANKS){ placedCounts[s][r] = 0 } }
+      st.stock = shuffle(makeDeck());
+      dealTo5();
+      renderAll();
+      document.querySelector("#statePill").textContent = '状態: 最初の1枚を出してください（何でも可）';
+    }
+
+    function nextDeckIfNeeded(){
+      if(st.deckMode===2 && st.stock.length===0 && st.hand.length>0 && st.playedCount>=52 && st.deckIndex===1){
+        st.deckIndex = 2;
+        st.stock = shuffle(makeDeck());
+      }
+    }
+
+    function dealTo5(){ while(st.hand.length<5 && st.stock.length){ st.hand.push(st.stock.pop()); } }
+
+    function playCard(card){
+      const i = st.hand.findIndex(x=>x.suit===card.suit && x.rank===card.rank);
+      if(i<0) return;
+      const [c] = st.hand.splice(i,1);
+      st.waste.push(c); bumpPlaced(c);
+      st.playedCount++;
+      nextDeckIfNeeded();
+      dealTo5();
+      // 行き詰まり判定
+      const canMore = st.hand.some(h=>canPlayOn(st.waste[st.waste.length-1], h));
+      if(!canMore) st.over = true;
+      if((st.deckMode===1 && st.playedCount===52) || (st.deckMode===2 && st.playedCount===104)) st.over = true;
+      renderAll();
+      if(st.over) finalizeResult();
+    }
+
+    // ===== ハイスコア
+    const HS_KEY = 'cool104_solo_v1';
+    function loadHS(){ try{ return JSON.parse(localStorage.getItem(HS_KEY)||'null') }catch(e){ return null } }
+    function saveHS(obj){ localStorage.setItem(HS_KEY, JSON.stringify(obj)); }
+    function fmtSec(s){ if(s==null) return '-'; const m=Math.floor(s/60), sec=String(s%60).padStart(2,'0'); return m?`${m}:${sec}`:`0:${sec}` }
+
+    function finalizeResult(){
+      const spent = Math.round((Date.now()-st.startAt)/1000);
+      const hs = loadHS() || { bestPlayed:0, bestTime52:null, bestTime104:null, total:0 };
+      hs.total = (hs.total||0)+1;
+      hs.bestPlayed = Math.max(hs.bestPlayed||0, st.playedCount);
+      if(st.playedCount===52 && st.deckMode===1){ hs.bestTime52 = (hs.bestTime52==null?spent:Math.min(hs.bestTime52, spent)); }
+      if(st.playedCount===104 && st.deckMode===2){ hs.bestTime104 = (hs.bestTime104==null?spent:Math.min(hs.bestTime104, spent)); }
+      saveHS(hs); renderHighScore();
+    }
+
+    function renderHighScore(){
+      const hs = loadHS();
+      const $id = id=>document.getElementById(id);
+      if(!hs){ $id('hsBestPlayed').textContent='-'; $id('hsBestTime52').textContent='-'; $id('hsBestTime104').textContent='-'; $id('hsTotal').textContent='-'; return; }
+      $id('hsBestPlayed').textContent = hs.bestPlayed ?? '-';
+      $id('hsBestTime52').textContent = hs.bestTime52!=null ? fmtSec(hs.bestTime52) : '-';
+      $id('hsBestTime104').textContent = hs.bestTime104!=null ? fmtSec(hs.bestTime104) : '-';
+      $id('hsTotal').textContent = hs.total ?? 0;
+    }
+
+    // ===== イベント
+    document.querySelector("#newGame").addEventListener('click', startGame);
+    document.querySelector("#hintBtn").addEventListener('click', ()=>{
+      const pc = playableCards(); if(!pc.length) return;
+      const labels = new Set(pc.map(c=>c.suit+c.rank));
+      document.querySelectorAll(".hand .card").forEach(el=>{ const lab = el.getAttribute('aria-label').replace(/\s/g,''); if(labels.has(lab)) el.classList.add('playable'); });
+    });
+    document.querySelector("#deckMode").addEventListener('change', e=>{ st.deckMode = Number(e.target.value); startGame(); })
+
+    // 初回開始（DOM準備後に1回だけ）
+    if(document.readyState==='loading'){
+      document.addEventListener('DOMContentLoaded', startGame);
+    }else{
+      startGame();
+    }
+
+    document.querySelector("#resetHS").addEventListener('click', ()=>{ localStorage.removeItem(HS_KEY); renderHighScore(); });
+  </script>
+</body>
+</html>
