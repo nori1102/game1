@@ -69,7 +69,23 @@
       .card .rank,.card .suit{font-size:1.4rem}
       .rgrid{grid-template-columns:repeat(13,26px)}
     }
-  </style>
+    /* --- モバイル手札の表示を当初仕様に合わせて安定化（5列固定・スクロールなし） --- */
+  @media (max-width: 820px){
+    .hand{
+      display:grid; /* 当初の並び方を再現しつつ安定化 */
+      grid-template-columns: repeat(5, 1fr);
+      gap:12px;
+      overflow:visible; /* 横スクロールを抑止 */
+      padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    }
+    .card{
+      width:100%;
+      height:auto;
+      aspect-ratio: 110 / 155; /* カード比率を強制維持（iOS対応） */
+    }
+    .card .rank, .card .suit{ font-size: clamp(1.2rem, 4.2vw, 1.6rem); }
+  }
+</style>
 </head>
 <body>
   <header>
@@ -88,7 +104,7 @@
     <div class="grid">
       <aside class="side">
         <div class="box">
-          <h2>ルール</h2>
+          <h2>ルール（Wikipedia準拠）</h2>
           <ul style="margin:6px 0 0 18px;line-height:1.6">
             <li>手札は常に<strong>5枚</strong>。最初の1枚は好きなカードを<strong>台札</strong>として出す。</li>
             <li>以後、<strong>台札の一番上</strong>と<strong>同じ絵柄</strong>または<strong>同じ番号</strong>のみ出せる。</li>
