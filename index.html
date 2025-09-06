@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>間違い探し（3か所固定・WEBランダム）</title>
+<title>間違い探し（3か所固定・WEBランダム・改良UI）</title>
 <style>
   :root{
     --bg:#0b1020; --fg:#e6f3ff; --line:#22314f;
-    --good:#23d18b; --bad:#ff4d6d;
+    --good:#23d18b; --bad:#ff4d6d; --hint:#f7b500;
   }
   html,body{margin:0;background:radial-gradient(1200px 600px at 50% 5%, #151d3f 0%, #0b1020 55%, #070a14 100%);
     color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP",sans-serif}
@@ -24,6 +24,18 @@
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(0,0,0,.45)}
   .card{background:rgba(8,12,28,.85);border:1px solid var(--line);border-radius:16px;padding:22px 20px;max-width:560px}
   footer{opacity:.75;font-size:12px;margin-top:10px;text-align:center}
+  /* 右ボードのシェイク演出 */
+  .shake{animation:shake .25s ease}
+  @keyframes shake{
+    0%{transform:translateX(0)} 25%{transform:translateX(-6px)}
+    50%{transform:translateX(6px)} 75%{transform:translateX(-4px)} 100%{transform:translateX(0)}
+  }
+  /* 準ターゲット（照準ガイド） */
+  .reticle{
+    position:absolute; pointer-events:none; border:2px solid rgba(255,255,255,.45);
+    border-radius:50%; width:46px; height:46px; transform:translate(-50%,-50%);
+    box-shadow:0 0 0 2px rgba(0,0,0,.25) inset;
+  }
 </style>
 </head>
 <body>
@@ -32,7 +44,9 @@
     <h1>間違い探し（3か所固定・WEBランダム）</h1>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button id="startBtn" class="btn">▶ スタート</button>
+      <button id="revealBtn" class="btn">👀 答えを見る</button>
       <span class="pill">残り: <b id="remain">-</b></span>
+      <span class="pill">ミス: <b id="miss">0</b></span>
       <span class="pill">タイム: <b id="time">00:00</b></span>
     </div>
   </header>
@@ -41,16 +55,17 @@
     <div class="board">
       <canvas id="canL"></canvas>
     </div>
-    <div class="board">
+    <div class="board" id="boardR">
       <canvas id="canR"></canvas>
       <div id="menu" class="overlay">
         <div class="card">
           <h2>遊び方</h2>
-          <p>スタートを押すと、WEBからランダムに高精細画像を取得して左右に表示します。右の画像には<b>常に3か所</b>だけ細かな違いを仕込みます。見つけたらタップ/クリック！</p>
-          <p style="opacity:.85">※ 画像は Wikimedia Commons から取得します（CORS対応）。</p>
+          <p>スタートを押すとWEBからランダムの高精細画像を左右に表示します。右には<b>常に3か所</b>だけ微妙な違いを仕込みます。見つけた箇所をクリック！</p>
+          <p style="opacity:.85">分かりづらいときは「答えを見る」で終了できます（または60秒経過／ミス6回で自動表示）。</p>
           <button id="startBig" class="btn">▶ スタート</button>
         </div>
       </div>
+      <div id="ret" class="reticle" style="display:none"></div>
     </div>
   </div>
 
@@ -64,29 +79,39 @@
   const ctxL = canL.getContext('2d');
   const ctxR = canR.getContext('2d');
   const startBtn = document.getElementById('startBtn');
+  const revealBtn = document.getElementById('revealBtn');
   const startBig = document.getElementById('startBig');
   const menu = document.getElementById('menu');
+  const boardR = document.getElementById('boardR');
+  const ret = document.getElementById('ret');
+
   const remainEl = document.getElementById('remain');
   const timeEl = document.getElementById('time');
+  const missEl = document.getElementById('miss');
 
-  // 固定：常に3か所
   const DIFF_COUNT = 3;
+  const AUTO_REVEAL_TIME = 60_000; // 60秒
+  const AUTO_REVEAL_MISS = 6;      // ミス6回で自動終了
 
-  // 状態
   let img = new Image();
-  let diffs = []; // {x,y,r,found:false} 右画像の座標系（実ピクセル）
+  let diffs = []; // {x,y,r,found:false}
   let found = 0;
-  let timerId = null, tStart = 0;
+  let missCount = 0;
+  let timerId = null, tStart = 0, autoRevealTimer = null;
 
-  // タイマー
   function fmtTime(ms){ const s=Math.floor(ms/1000); const m=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return `${m}:${ss}`; }
-  function startTimer(){ clearInterval(timerId); tStart=performance.now(); timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250); }
-  function stopTimer(){ clearInterval(timerId); }
+  function startTimer(){
+    clearInterval(timerId);
+    tStart=performance.now();
+    timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250);
+    clearTimeout(autoRevealTimer);
+    autoRevealTimer=setTimeout(()=>revealAnswers(true), AUTO_REVEAL_TIME);
+  }
+  function stopTimer(){ clearInterval(timerId); clearTimeout(autoRevealTimer); }
 
-  // 描画（高精細対応）
+  // 高精細描画
   function drawFit(img, canvas, ctx){
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    // レイアウト：最大640px表示、内部は原寸×dpr
     canvas.style.width = Math.min(640, img.naturalWidth) + 'px';
     const scale = img.naturalWidth / img.naturalHeight;
     const cssW = canvas.clientWidth || Math.min(640, img.naturalWidth);
@@ -99,7 +124,7 @@
     ctx.drawImage(img, 0, 0);
   }
 
-  // WEBからランダム画像取得（Wikimedia Commons / CORS）
+  // 画像取得
   async function fetchRandomImage(){
     const api='https://commons.wikimedia.org/w/api.php';
     const url=`${api}?action=query&generator=random&grnnamespace=6&grnlimit=1&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=3000&format=json&origin=*`;
@@ -111,16 +136,14 @@
     return info.url;
   }
 
-  // 差分を右画像に「埋め込む」（元画像を軽く加工：明度・色相シフトなど）
+  // 差分を右に埋め込む（色相/明度を局所変更）
   function implantDifferences(){
     diffs = [];
-    // 右キャンバスの生解像度（dpr考慮前）を取得
     const dpr = Math.min(window.devicePixelRatio||1,2);
     const w = Math.round(canR.width / dpr);
     const h = Math.round(canR.height / dpr);
 
-    // 3つのランダム円を作る（縁から余白を取る）
-    const RMIN=18, RMAX=36, MARGIN=40;
+    const RMIN=22, RMAX=40, MARGIN=48;
     for(let i=0;i<DIFF_COUNT;i++){
       const r = Math.floor(RMIN + Math.random()*(RMAX-RMIN));
       const x = Math.floor(MARGIN + Math.random()*(w - MARGIN*2));
@@ -128,8 +151,6 @@
       diffs.push({x, y, r, found:false});
     }
 
-    // ピクセル加工：円領域内の彩度/明度を変えて「自然な違い」を作る
-    // 右キャンバスはすでに drawFit 済みなので、その上のピクセルを取得・変換
     const imgData = ctxR.getImageData(0,0,w,h);
     const arr = imgData.data;
 
@@ -140,40 +161,34 @@
       let h,s,l=(max+min)/2;
       if(max===min){ h=s=0; }
       else{
-        const d=max-min;
-        s = l>0.5 ? d/(2-max-min) : d/(max+min);
+        const d=max-min; s = l>0.5 ? d/(2-max-min) : d/(max+min);
         switch(max){
           case r: h=(g-b)/d + (g<b?6:0); break;
           case g: h=(b-r)/d + 2; break;
           case b: h=(r-g)/d + 4; break;
-        }
-        h/=6;
+        } h/=6;
       }
       return [h,s,l];
     }
     function hsl2rgb(h,s,l){
-      function hue2rgb(p,q,t){ if(t<0) t+=1; if(t>1) t-=1;
-        if(t<1/6) return p+(q-p)*6*t;
-        if(t<1/2) return q;
-        if(t<2/3) return p+(q-p)*(2/3 - t)*6;
+      function hue2rgb(p,q,t){ if(t<0)t+=1; if(t>1)t-=1;
+        if(t<1/6)return p+(q-p)*6*t;
+        if(t<1/2)return q;
+        if(t<2/3)return p+(q-p)*(2/3 - t)*6;
         return p;
       }
       let r,g,b;
       if(s===0){ r=g=b=l; }
       else{
-        const q = l<0.5 ? l*(1+s) : l+s - l*s;
-        const p = 2*l - q;
-        r = hue2rgb(p,q,h+1/3);
-        g = hue2rgb(p,q,h);
-        b = hue2rgb(p,q,h-1/3);
+        const q = l<0.5 ? l*(1+s) : l+s - l*s, p = 2*l - q;
+        r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3);
       }
       return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
     }
 
-    // 各円ごとに微妙に異なる加工（色相±、明度±）
     diffs.forEach((d,idx)=>{
-      const hueShift = ((idx+1)*0.08) * (Math.random()<0.5?-1:1); // ±約0.08（約±30°）
-      const lightDelta = (Math.random()*0.20 - 0.10); // -0.10〜+0.10
+      const hueShift = ((idx+1)*0.08) * (Math.random()<0.5?-1:1);
+      const lightDelta = (Math.random()*0.18 - 0.09); // 少し控えめに
       for(let py=d.y-d.r; py<=d.y+d.r; py++){
         if(py<0||py>=h) continue;
         for(let px=d.x-d.r; px<=d.x+d.r; px++){
@@ -185,21 +200,66 @@
           hh = (hh + hueShift + 1)%1;
           ll = Math.max(0, Math.min(1, ll + lightDelta));
           const [nr,ng,nb]=hsl2rgb(hh,ss,ll);
-          arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb; // alphaはそのまま
+          arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb;
         }
       }
     });
 
     ctxR.putImageData(imgData, 0, 0);
-    found = 0;
+    found = 0; missCount = 0;
     remainEl.textContent = (DIFF_COUNT - found);
+    missEl.textContent = missCount;
     startTimer();
   }
 
-  // スタート：画像を取得→左右に描画→右に3か所の違いを埋め込む
+  // 視覚フィードバック
+  function pulseRing(x,y,r,color){
+    // 太いリング＋パルス拡大
+    let a=0.9, rr=r+10;
+    const id = setInterval(()=>{
+      ctxR.save();
+      ctxR.lineWidth = 6;
+      ctxR.strokeStyle = color;
+      ctxR.globalAlpha = a;
+      ctxR.beginPath(); ctxR.arc(x,y,rr,0,Math.PI*2); ctxR.stroke();
+      ctxR.restore();
+      a -= 0.18; rr += 6;
+      if(a<=0){ clearInterval(id); }
+    }, 40);
+  }
+  function bigCross(x,y,size,color){
+    const s=size;
+    ctxR.save();
+    ctxR.lineWidth = 6;
+    ctxR.strokeStyle = color;
+    ctxR.globalAlpha = .95;
+    ctxR.beginPath(); ctxR.moveTo(x-s,y-s); ctxR.lineTo(x+s,y+s); ctxR.moveTo(x+s,y-s); ctxR.lineTo(x-s,y+s); ctxR.stroke();
+    ctxR.restore();
+  }
+
+  // 答え表示＆終了
+  function revealAnswers(auto=false){
+    stopTimer();
+    // 残りも含めて全て表示（黄色）
+    diffs.forEach(d=>{
+      if(!d.found){
+        ctxR.save();
+        ctxR.lineWidth=5; ctxR.strokeStyle='var(--hint)'; ctxR.globalAlpha=.9;
+        ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+8,0,Math.PI*2); ctxR.stroke(); ctxR.restore();
+      }
+    });
+    remainEl.textContent = 0;
+    const msg = auto
+      ? '時間/ミス上限に達したため、答えを表示しました。もう一度スタートで再挑戦できます。'
+      : '答えを表示しました。もう一度スタートで再挑戦できます。';
+    setTimeout(()=>alert(msg), 10);
+  }
+
+  // ゲーム開始
   async function startGame(){
     menu.style.display='none';
-    remainEl.textContent='-'; timeEl.textContent='00:00'; stopTimer();
+    remainEl.textContent='-'; timeEl.textContent='00:00'; missEl.textContent='0';
+    stopTimer();
     try{
       const src = await fetchRandomImage();
       img = new Image();
@@ -207,7 +267,6 @@
       img.onload = ()=>{
         drawFit(img, canL, ctxL);
         drawFit(img, canR, ctxR);
-        // 右だけ加工して違いを作成
         implantDifferences();
       };
       img.src = src;
@@ -218,30 +277,25 @@
     }
   }
 
-  // クリック判定（右だけ）
-  function flash(x,y,r,kind){
-    ctxR.save();
-    ctxR.lineWidth=4;
-    ctxR.strokeStyle = (kind==='good')? 'var(--good)' : 'var(--bad)';
-    ctxR.beginPath(); ctxR.arc(x,y,r+5,0,Math.PI*2); ctxR.stroke();
-    ctxR.restore();
-  }
-
+  // クリック判定（右のみ）
   function checkHit(px,py){
     for(const d of diffs){
       if(!d.found && Math.hypot(px-d.x, py-d.y)<=d.r){
         d.found = true; found++;
-        flash(d.x,d.y,d.r,'good');
+        pulseRing(d.x,d.y,d.r,'var(--good)');
         remainEl.textContent = (DIFF_COUNT - found);
         if(found===DIFF_COUNT){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
         return;
       }
     }
-    flash(px,py,14,'bad');
+    // ミス
+    missCount++; missEl.textContent = missCount;
+    bigCross(px,py,22,'var(--bad)');
+    boardR.classList.remove('shake'); void boardR.offsetWidth; boardR.classList.add('shake');
+    if(missCount>=AUTO_REVEAL_MISS){ revealAnswers(true); }
   }
 
   canR.addEventListener('click',(e)=>{
-    // CSSサイズ→キャンバス座標に変換
     const r=canR.getBoundingClientRect();
     const dpr=Math.min(window.devicePixelRatio||1,2);
     const scaleX=canR.width/dpr/r.width, scaleY=canR.height/dpr/r.height;
@@ -249,11 +303,27 @@
     checkHit(x,y);
   },{passive:true});
 
+  // 準ターゲット（照準）を表示
+  function moveReticle(e){
+    const r=canR.getBoundingClientRect();
+    const cx=(e.touches?e.touches[0].clientX:e.clientX);
+    const cy=(e.touches?e.touches[0].clientY:e.clientY);
+    if(cx<r.left || cx>r.right || cy<r.top || cy>r.bottom){ ret.style.display='none'; return; }
+    ret.style.display='block';
+    ret.style.left = (cx - r.left) + 'px';
+    ret.style.top  = (cy - r.top)  + 'px';
+  }
+  canR.addEventListener('mousemove',moveReticle,{passive:true});
+  canR.addEventListener('mouseleave',()=>{ ret.style.display='none'; });
+  canR.addEventListener('touchstart',moveReticle,{passive:true});
+  canR.addEventListener('touchmove',moveReticle,{passive:true});
+
   // ボタン
   startBtn.onclick = startGame;
   startBig.onclick = startGame;
+  revealBtn.onclick = ()=>revealAnswers(false);
 
-  // 初期はガイド表示
+  // 初期ガイド
   menu.style.display='flex';
 })();
 </script>
