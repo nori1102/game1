@@ -1,92 +1,355 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>間違い探しゲーム</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>間違い探し PRO — 高精細・自動検出・WEBランダム対応</title>
 <style>
-  :root{ --bg:#0b1020; --fg:#e6f3ff; --good:#2ecc71; --bad:#ff4d6d; --hint:#f39c12; }
-  html,body{margin:0;background:#0b1020;color:var(--fg);font-family:sans-serif}
-  .wrap{max-width:1000px;margin:0 auto;padding:12px}
-  h1{font-size:20px;text-align:center}
-  canvas{display:block;margin:10px auto;border:2px solid #345;border-radius:12px;background:#111}
-  .hud{display:flex;gap:10px;justify-content:center;margin:10px 0}
-  button{padding:8px 14px;border-radius:8px;border:1px solid #345;background:#223;color:#fff;cursor:pointer}
-  button:hover{background:#334}
+  :root{
+    --bg:#0b1020; --fg:#e6f3ff; --panel:#0c1330; --line:#22314f;
+    --good:#23d18b; --bad:#ff4d6d; --hint:#f7b500; --accent:#61dafb;
+  }
+  html,body{margin:0;background:radial-gradient(1200px 600px at 50% 5%, #151d3f 0%, #0b1020 55%, #070a14 100%);
+    color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP",sans-serif}
+  .wrap{max-width:1280px;margin:0 auto;padding:14px}
+  header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  h1{font-size:clamp(18px,3vw,24px);letter-spacing:.06em;margin:6px 0}
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:#0e1836;color:var(--fg);
+    border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:600}
+  .btn:hover{filter:brightness(1.08)}
+  .sel{appearance:none;border:1px solid var(--line);background:#0e1836;color:var(--fg);
+    border-radius:10px;padding:8px 10px}
+  .pill{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0e1533;font-variant-numeric:tabular-nums}
+  .boards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .board{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.45);background:#0a122b}
+  canvas{display:block;width:100%;height:auto}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(0,0,0,.45)}
+  .card{background:rgba(8,12,28,.85);border:1px solid var(--line);border-radius:16px;padding:22px 20px;max-width:640px}
+  .legend{display:flex;gap:12px;justify-content:center;margin-top:8px;font-size:13px;opacity:.9}
+  .legend i{display:inline-block;width:14px;height:14px;border-radius:50%}
+  .legend .good{background:var(--good)} .legend .bad{background:var(--bad)} .legend .hint{background:var(--hint)}
+  .magnifier{position:absolute; pointer-events:none; border:2px solid var(--accent); border-radius:50%; width:160px; height:160px; overflow:hidden; display:none; box-shadow:0 6px 18px rgba(0,0,0,.5)}
+  .magnifier canvas{width:200%; height:200%; transform-origin:top left}
+  footer{opacity:.75;font-size:12px;margin-top:10px;text-align:center}
+  .small{font-size:12px;opacity:.85}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>間違い探しゲーム</h1>
-  <div class="hud">
-    <button id="startBtn">▶ スタート</button>
-    <button id="hintBtn">💡 ヒント</button>
-    <button id="retryBtn">↻ やり直し</button>
+  <header>
+    <h1>間違い探し PRO（高精細・自動検出・WEBランダム）</h1>
+    <div class="controls">
+      <label class="btn">左画像<input id="leftImg" type="file" accept="image/*" hidden></label>
+      <label class="btn">右画像<input id="rightImg" type="file" accept="image/*" hidden></label>
+      <button id="sampleBtn" class="btn">サンプル生成</button>
+      <button id="randomWebBtn" class="btn">🌐 WEBからランダム画像</button>
+      <select id="difficulty" class="sel" title="難易度">
+        <option value="easy">EASY</option>
+        <option value="normal" selected>NORMAL</option>
+        <option value="hard">HARD</option>
+        <option value="expert">EXPERT</option>
+      </select>
+      <button id="buildBtn" class="btn">差分を自動検出</button>
+      <button id="hintBtn" class="btn">💡 ヒント</button>
+      <button id="resetBtn" class="btn">↻ リセット</button>
+      <span class="pill">残り: <b id="remain">-</b></span>
+      <span class="pill">タイム: <b id="time">00:00</b></span>
+      <span class="pill">ズーム: <b id="zoomState">OFF</b></span>
+      <button id="zoomBtn" class="btn">🔍 ズーム</button>
+    </div>
+  </header>
+
+  <div class="boards">
+    <div class="board" id="boardL">
+      <canvas id="canL"></canvas>
+    </div>
+    <div class="board" id="boardR">
+      <canvas id="canR"></canvas>
+      <div id="menu" class="overlay">
+        <div class="card">
+          <h2>使い方</h2>
+          <p>左・右に<b>同じサイズの高精細画像</b>を読み込み、「差分を自動検出」を押すと右画像の違いを自動抽出します。</p>
+          <p class="small">外部からは「🌐 WEBからランダム画像」で Wikimedia Commons から1枚取得（CORS対応）。</p>
+          <div class="legend">
+            <span><i class="good"></i> 当たり</span>
+            <span><i class="hint"></i> ヒント</span>
+            <span><i class="bad"></i> はずれ</span>
+          </div>
+          <p>ズームをONにするとポインタ周辺を拡大表示（スマホは指でなぞる）。</p>
+        </div>
+      </div>
+      <div id="mag" class="magnifier"><canvas id="magcv"></canvas></div>
+    </div>
   </div>
-  <canvas id="game" width="900" height="450"></canvas>
-  <p style="text-align:center">左右の絵を見比べて、違うところをクリック！</p>
+
+  <footer>© 2025 SpotDiff Pro — ローカルで完結・データ送信なし</footer>
 </div>
+
 <script>
 (function(){
-  const canvas=document.getElementById('game');
-  const ctx=canvas.getContext('2d');
-  const W=canvas.width, H=canvas.height;
-  const LEFT={x:20,y:20,w:W/2-40,h:H-40};
-  const RIGHT={x:W/2+20,y:20,w:W/2-40,h:H-40};
-  let differences=[], found=0, level=1;
+  // ====== 要素 ======
+  const canL = document.getElementById('canL');
+  const canR = document.getElementById('canR');
+  const ctxL = canL.getContext('2d');
+  const ctxR = canR.getContext('2d');
+  const remainEl = document.getElementById('remain');
+  const timeEl = document.getElementById('time');
+  const menu = document.getElementById('menu');
+  const mag = document.getElementById('mag');
+  const magcv = document.getElementById('magcv');
+  const mgx = magcv.getContext('2d');
+  const zoomBtn = document.getElementById('zoomBtn');
+  const zoomState = document.getElementById('zoomState');
+  let zoomOn = false;
 
-  function drawScene(x,y,w,h,seed){
-    ctx.fillStyle="#0a122b";ctx.fillRect(x,y,w,h);
-    for(let i=0;i<5;i++){
-      ctx.fillStyle=`hsl(${seed*30+i*40},70%,50%)`;
-      ctx.beginPath();
-      ctx.arc(x+50+Math.random()*(w-100),y+50+Math.random()*(h-100),20+Math.random()*30,0,Math.PI*2);
-      ctx.fill();
+  // ====== 状態 ======
+  let imgL = new Image(), imgR = new Image();
+  let diffs = []; // {x,y,r,found:false}
+  let found = 0;
+  let timerId = null, tStart = 0;
+
+  const DIFF_LIMIT = 24; // 最大抽出数
+
+  // ====== ユーティリティ ======
+  function fmtTime(ms){ const s=Math.floor(ms/1000); const m=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return `${m}:${ss}`; }
+  function startTimer(){ clearInterval(timerId); tStart=performance.now(); timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250); }
+  function stopTimer(){ clearInterval(timerId); }
+
+  function drawFit(img, canvas, ctx){
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // 表示は最大640px（レイアウト用）。内部バッファは原寸 * dpr（高精細）
+    canvas.style.width = Math.min(640, img.naturalWidth) + 'px';
+    const scale = img.naturalWidth / img.naturalHeight;
+    const cssW = canvas.clientWidth || Math.min(640, img.naturalWidth);
+    const cssH = Math.round(cssW / scale);
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.round(img.naturalWidth * dpr);
+    canvas.height = Math.round(img.naturalHeight * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,canvas.width/dpr,canvas.height/dpr);
+    ctx.drawImage(img, 0, 0);
+  }
+
+  // ====== 画像ロード ======
+  function loadFile(inputEl, target, done){
+    const file = inputEl.files[0]; if(!file) return;
+    const url = URL.createObjectURL(file);
+    target.onload = ()=>{ URL.revokeObjectURL(url); done && done(); };
+    target.src = url;
+  }
+
+  // サンプル生成（Canvasで高解像背景を作る）
+  function loadSample(){
+    const w=1600,h=1000;
+    const a=document.createElement('canvas'); a.width=w; a.height=h;
+    const b=document.createElement('canvas'); b.width=w; b.height=h;
+    const A=a.getContext('2d'), B=b.getContext('2d');
+
+    const grad = A.createLinearGradient(0,0,w,h);
+    grad.addColorStop(0,'#354a9e'); grad.addColorStop(1,'#0f1740');
+    A.fillStyle=grad; A.fillRect(0,0,w,h); B.fillStyle=grad; B.fillRect(0,0,w,h);
+    for(let i=0;i<200;i++){
+      A.fillStyle = `hsl(${(i*13)%360},70%,55%)`; B.fillStyle=A.fillStyle;
+      const x=Math.random()*w, y=Math.random()*h, r=6+Math.random()*18;
+      A.beginPath(); A.arc(x,y,r,0,Math.PI*2); A.fill();
+      B.beginPath(); B.arc(x,y,r,0,Math.PI*2); B.fill();
+    }
+    // 右にだけ微改変
+    for(let i=0;i<40;i++){
+      B.save(); B.globalCompositeOperation='lighter';
+      B.fillStyle = `hsla(${(i*23)%360},80%,60%,0.6)`;
+      const x=Math.random()*w, y=Math.random()*h;
+      B.fillRect(x,y, 12+Math.random()*30, 12+Math.random()*30);
+      B.restore();
+    }
+    imgL=new Image(); imgR=new Image();
+    imgL.onload=()=>{ imgR.onload=()=>{ drawFit(imgL, canL, ctxL); drawFit(imgR, canR, ctxR); menu.style.display='flex'; }; imgR.src=b.toDataURL('image/png'); };
+    imgL.src=a.toDataURL('image/png');
+  }
+
+  // Wikimedia Commons からランダム画像（CORS対応：origin=*）
+  async function fetchRandomCommons(){
+    try{
+      const api='https://commons.wikimedia.org/w/api.php';
+      const url=`${api}?action=query&generator=random&grnnamespace=6&grnlimit=1&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=3000&format=json&origin=*`;
+      const res=await fetch(url);
+      const data=await res.json();
+      const page = data?.query?.pages && Object.values(data.query.pages)[0];
+      const info = page?.imageinfo?.[0];
+      if(!info?.url){ alert('画像取得に失敗しました'); return; }
+      const src = info.url;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = ()=>{
+        imgL = img;
+        imgR = new Image();
+        imgR.crossOrigin = "anonymous";
+        imgR.onload = ()=>{
+          drawFit(imgL, canL, ctxL);
+          drawFit(imgR, canR, ctxR);
+          menu.style.display='flex';
+        };
+        imgR.src = src; // 同じ画像を右にも
+      };
+      img.src = src;
+    }catch(e){
+      console.error(e); alert('WEB画像の取得中にエラーが発生しました');
     }
   }
-  function createLevel(){
-    ctx.clearRect(0,0,W,H);
-    drawScene(LEFT.x,LEFT.y,LEFT.w,LEFT.h,level);
-    drawScene(RIGHT.x,RIGHT.y,RIGHT.w,RIGHT.h,level);
-    differences=[];
-    for(let i=0;i<3+level;i++){
-      const r=15+Math.random()*20;
-      const cx=RIGHT.x+40+Math.random()*(RIGHT.w-80);
-      const cy=RIGHT.y+40+Math.random()*(RIGHT.h-80);
-      differences.push({x:cx,y:cy,r:r,found:false});
-      ctx.fillStyle="rgba(255,0,0,0.5)";
-      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+
+  // ====== 差分自動検出 ======
+  function buildDiffs(){
+    if(!imgL.naturalWidth || !imgR.naturalWidth){ alert('左と右の画像を読み込んでください（または「サンプル生成」「WEBランダム」）。'); return; }
+    if(imgL.naturalWidth!==imgR.naturalWidth || imgL.naturalHeight!==imgR.naturalHeight){ alert('左右の画像サイズが異なります。'); return; }
+    menu.style.display='none';
+
+    const diffParams = {
+      easy:   {th: 28,  minArea: 120, radius: 26, nms: 16},
+      normal: {th: 34,  minArea: 200, radius: 22, nms: 18},
+      hard:   {th: 42,  minArea: 320, radius: 18, nms: 20},
+      expert: {th: 56,  minArea: 420, radius: 14, nms: 24},
+    }[document.getElementById('difficulty').value];
+
+    const w = imgL.naturalWidth, h = imgL.naturalHeight;
+    const offL=document.createElement('canvas'), offR=document.createElement('canvas');
+    offL.width=w; offL.height=h; offR.width=w; offR.height=h;
+    const a=offL.getContext('2d'), b=offR.getContext('2d');
+    a.drawImage(imgL,0,0); b.drawImage(imgR,0,0);
+    const dataL=a.getImageData(0,0,w,h), dataR=b.getImageData(0,0,w,h);
+
+    const mask=new Uint8ClampedArray(w*h);
+    for(let i=0;i<w*h;i++){
+      const r1=dataL.data[i*4], g1=dataL.data[i*4+1], b1=dataL.data[i*4+2];
+      const r2=dataR.data[i*4], g2=dataR.data[i*4+1], b2=dataR.data[i*4+2];
+      const dr=r1-r2, dg=g1-g2, db=b1-b2;
+      const d = Math.sqrt(dr*dr + dg*dg + db*db);
+      if(d>diffParams.th) mask[i]=1;
     }
-    found=0;
-  }
-  function check(px,py){
-    for(const d of differences){
-      if(!d.found){
-        const dx=px-d.x, dy=py-d.y;
-        if(dx*dx+dy*dy<=d.r*d.r){
-          d.found=true;found++;
-          ctx.strokeStyle= "#2ecc71";ctx.lineWidth=4;
-          ctx.beginPath();ctx.arc(d.x,d.y,d.r+5,0,Math.PI*2);ctx.stroke();
-          if(found===differences.length) alert("クリア！次のレベルへ");
-          return;
+
+    // 連結成分でクラスタリング
+    const labels=new Int32Array(w*h).fill(-1);
+    const comps=[]; let label=0;
+    const qx=new Int32Array(w*h), qy=new Int32Array(w*h);
+    for(let y=0;y<h;y++){
+      for(let x=0;x<w;x++){
+        const idx=y*w+x;
+        if(mask[idx]===1 && labels[idx]===-1){
+          let qh=0, qt=0; labels[idx]=label; qx[qt]=x; qy[qt]=y; qt++;
+          let minx=x,maxx=x,miny=y,maxy=y,area=0,sumx=0,sumy=0;
+          while(qh<qt){
+            const cx=qx[qh], cy=qy[qh]; qh++; area++; sumx+=cx; sumy+=cy;
+            if(cx<minx)minx=cx; if(cx>maxx)maxx=cx; if(cy<miny)miny=cy; if(cy>maxy)maxy=cy;
+            for(let dy=-1;dy<=1;dy++){
+              for(let dx=-1;dx<=1;dx++){
+                if(dx===0&&dy===0) continue;
+                const nx=cx+dx, ny=cy+dy;
+                if(nx>=0&&nx<w&&ny>=0&&ny<h){
+                  const nidx=ny*w+nx;
+                  if(mask[nidx]===1 && labels[nidx]===-1){
+                    labels[nidx]=label; qx[qt]=nx; qy[qt]=ny; qt++;
+                  }
+                }
+              }
+            }
+          }
+          if(area>=diffParams.minArea){
+            const cx=sumx/area, cy=sumy/area;
+            const r=Math.max(diffParams.radius, Math.min(60, Math.max(maxx-minx, maxy-miny)*0.35));
+            comps.push({x:cx,y:cy,r,area});
+          }
+          label++;
         }
       }
     }
-    ctx.strokeStyle="#ff4d6d";ctx.lineWidth=3;
-    ctx.beginPath();ctx.arc(px,py,12,0,Math.PI*2);ctx.stroke();
+
+    // 重複除去（NMS）
+    comps.sort((a,b)=>b.area-a.area);
+    const keep=[]; const nms=diffParams.nms;
+    compsLoop: for(const c of comps){
+      for(const k of keep){
+        if(Math.hypot(c.x-k.x,c.y-k.y) < nms + Math.max(c.r,k.r)*0.2){ continue compsLoop; }
+      }
+      keep.push(c); if(keep.length>=DIFF_LIMIT) break;
+    }
+
+    diffs = keep.map(d=>({x:d.x,y:d.y,r:d.r,found:false}));
+    found=0; remainEl.textContent=diffs.length;
+    drawFit(imgL, canL, ctxL); drawFit(imgR, canR, ctxR);
+    startTimer();
   }
-  canvas.addEventListener('click',e=>{
-    const r=canvas.getBoundingClientRect();
-    const x=e.clientX-r.left, y=e.clientY-r.top;
-    check(x,y);
-  });
-  document.getElementById('startBtn').onclick=()=>{createLevel();};
-  document.getElementById('retryBtn').onclick=()=>{createLevel();};
-  document.getElementById('hintBtn').onclick=()=>{
-    const d=differences.find(d=>!d.found);
-    if(d){ctx.strokeStyle="#f39c12";ctx.lineWidth=4;
-          ctx.beginPath();ctx.arc(d.x,d.y,d.r+8,0,Math.PI*2);ctx.stroke();}
+
+  function flash(x,y,r,kind){
+    ctxR.save();
+    ctxR.lineWidth=4;
+    ctxR.strokeStyle = kind==='good'? 'var(--good)' : (kind==='hint'? 'var(--hint)' : 'var(--bad)');
+    ctxR.beginPath(); ctxR.arc(x,y,r+5,0,Math.PI*2); ctxR.stroke();
+    ctxR.restore();
+  }
+
+  function checkHit(px,py){
+    if(!diffs.length) return;
+    for(const d of diffs){
+      if(!d.found && Math.hypot(px-d.x, py-d.y)<=d.r){
+        d.found=true; found++;
+        flash(d.x,d.y,d.r,'good');
+        remainEl.textContent=(diffs.length-found);
+        if(found===diffs.length){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
+        return;
+      }
+    }
+    flash(px,py,14,'bad');
+  }
+
+  canR.addEventListener('click',(e)=>{
+    const r=canR.getBoundingClientRect();
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const scaleX=canR.width/dpr/r.width, scaleY=canR.height/dpr/r.height;
+    const x=(e.clientX-r.left)*scaleX, y=(e.clientY-r.top)*scaleY;
+    checkHit(x,y);
+  },{passive:true});
+
+  // ヒント
+  document.getElementById('hintBtn').onclick=()=>{ const d=diffs.find(v=>!v.found); if(d) flash(d.x,d.y,d.r,'hint'); };
+
+  // リセット
+  document.getElementById('resetBtn').onclick=()=>{ diffs=[]; found=0; remainEl.textContent='-'; timeEl.textContent='00:00'; stopTimer(); menu.style.display='flex';
+    if(imgL.naturalWidth) drawFit(imgL, canL, ctxL); if(imgR.naturalWidth) drawFit(imgR, canR, ctxR);
   };
+
+  // ズーム（拡大鏡）
+  function setZoom(on){ zoomOn=on; zoomState.textContent=on?'ON':'OFF'; mag.style.display=on?'block':'none'; }
+  setZoom(false);
+  zoomBtn.onclick=()=>setZoom(!zoomOn);
+  function moveMagnifier(e){
+    if(!zoomOn) return;
+    const rect=canR.getBoundingClientRect();
+    const cx=(e.touches?e.touches[0].clientX:e.clientX), cy=(e.touches?e.touches[0].clientY:e.clientY);
+    const x=cx-rect.left, y=cy-rect.top;
+    mag.style.left=(x-mag.clientWidth/2)+'px'; mag.style.top=(y-mag.clientHeight/2)+'px';
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    magcv.width=canR.width/dpr; magcv.height=canR.height/dpr;
+    mgx.setTransform(1,0,0,1,0,0);
+    mgx.drawImage(canR,0,0,magcv.width,magcv.height);
+    magcv.style.transform='scale(2)';
+    magcv.style.transformOrigin=`${x}px ${y}px`;
+  }
+  canR.addEventListener('mousemove',moveMagnifier,{passive:true});
+  canR.addEventListener('touchmove',moveMagnifier,{passive:true});
+  canR.addEventListener('touchstart',moveMagnifier,{passive:true});
+
+  // ファイル選択
+  document.getElementById('leftImg').addEventListener('change',()=>loadFile(document.getElementById('leftImg'), imgL, ()=>drawFit(imgL, canL, ctxL)));
+  document.getElementById('rightImg').addEventListener('change',()=>loadFile(document.getElementById('rightImg'), imgR, ()=>drawFit(imgR, canR, ctxR)));
+
+  // ボタン
+  document.getElementById('sampleBtn').onclick=loadSample;
+  document.getElementById('randomWebBtn').onclick=fetchRandomCommons;
+  document.getElementById('buildBtn').onclick=buildDiffs;
+
+  // 初期ガイド表示
+  menu.style.display='flex';
 })();
 </script>
 </body>
