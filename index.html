@@ -34,7 +34,6 @@
     .board{display:grid;grid-template-columns:1fr;gap:12px;margin-top:10px}
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .slot{min-width:70px;min-height:100px;border:1px dashed #23336d;border-radius:12px;display:grid;place-items:center;padding:6px}
-    .pile{display:flex;gap:8px;align-items:center}
 
     /* 手札: 1列横スクロール（スマホ崩れを防止） */
     .hand{display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,#0d1536,#0a0f25);border:1px solid #172659;border-radius:14px;padding:10px;margin-top:16px}
@@ -133,10 +132,8 @@
 
         <div class="board">
           <div class="row">
-            <div class="pile">
-              <div class="slot" id="stockSlot" title="山札"><div class="card back" aria-label="stock"></div></div>
-              <div class="slot" id="wasteSlot" title="台札（出したカードの山）"></div>
-            </div>
+            <div class="slot" id="stockSlot" title="山札"><div class="card back" aria-label="stock"></div></div>
+            <div class="slot" id="wasteSlot" title="台札（出したカードの山）"></div>
           </div>
         </div>
 
@@ -155,7 +152,7 @@
     function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a }
     function makeDeck(){ const d=[]; for(const s of SUITS){ for(const r of RANKS){ d.push({suit:s,rank:r}); } } return d }
 
-    // ===== ゲーム状態
+    // ===== ゲーム状態（ソリティア）
     const st = {
       deckMode: 1, // 1=52, 2=104（連続）
       deckIndex: 1, // 現在のデッキ番号
@@ -175,7 +172,7 @@
     const placedCounts = {}; for(const s of SUITS){ placedCounts[s] = {}; for(const r of RANKS){ placedCounts[s][r] = 0 } }
     function bumpPlaced(card){ placedCounts[card.suit][card.rank] += 1 }
     function renderTracker(){
-      const wrap = document.querySelector("#tracker"); wrap.innerHTML = "";
+      const wrap = $("#tracker"); wrap.innerHTML = "";
       const maxPerRank = st.deckMode===2 ? 2 : 1;
       for(const suit of SUITS){
         const box=document.createElement('div'); box.className='suitRow';
@@ -189,12 +186,12 @@
     // ===== 描画
     function renderAll(){
       const top = st.waste[st.waste.length-1];
-      document.querySelector("#topPill").textContent = `台札: ${top?top.suit+top.rank:"-"}`;
-      document.querySelector("#scorePlayed").textContent = String(st.playedCount);
-      document.querySelector("#scoreStock").textContent = String(st.stock.length);
-      document.querySelector("#scoreDeck").textContent = `${st.deckIndex} / ${st.deckMode}`;
+      $("#topPill").textContent = `台札: ${top?top.suit+top.rank:"-"}`;
+      $("#scorePlayed").textContent = String(st.playedCount);
+      $("#scoreStock").textContent = String(st.stock.length);
+      $("#scoreDeck").textContent = `${st.deckIndex} / ${st.deckMode}`;
 
-      const handEl = document.querySelector("#hand");
+      const handEl = $("#hand");
       handEl.innerHTML = '<h3>あなたの手札</h3>';
       const playable = playableCards().map(x=>JSON.stringify(x));
       for(const c of st.hand.slice()){
@@ -203,18 +200,19 @@
         if(playable.includes(JSON.stringify(c))) el.classList.add('playable');
         el.onclick = ()=>{
           if(st.over) return;
-          if(!canPlayOn(top, c)) return;
+          const topNow = st.waste[st.waste.length-1];
+          if(!canPlayOn(topNow, c)) return;
           playCard(c);
         }
         handEl.appendChild(el);
       }
 
-      const waste = document.querySelector("#wasteSlot");
+      const waste = $("#wasteSlot");
       waste.innerHTML = "";
       if(top){ waste.appendChild(cardView(top)); }
 
-      document.querySelector("#tipsPill").textContent = playable.length? `出せるカード: ${playableCards().map(c=>c.suit+c.rank).join(' ')}` : '出せるカードなし';
-      document.querySelector("#statePill").textContent = st.over ? '状態: 終了' : '状態: プレイ中';
+      $("#tipsPill").textContent = playable.length? `出せるカード: ${playableCards().map(c=>c.suit+c.rank).join(' ')}` : '出せるカードなし';
+      $("#statePill").textContent = st.over ? '状態: 終了' : '状態: プレイ中';
 
       renderTracker();
       renderHighScore();
@@ -239,7 +237,7 @@
       st.stock = d1;
       dealTo5();
       renderAll();
-      document.querySelector("#statePill").textContent = '状態: 最初の1枚を出してください（何でも可）';
+      $("#statePill").textContent = '状態: 最初の1枚を出してください（何でも可）';
     }
 
     function nextDeckIfNeeded(){
@@ -294,17 +292,17 @@
     }
 
     // ===== イベント
-    document.querySelector("#newGame").addEventListener('click', startGame);
-    document.querySelector("#hintBtn").addEventListener('click', ()=>{
+    $("#newGame").addEventListener('click', startGame);
+    $("#hintBtn").addEventListener('click', ()=>{
       const pc = playableCards(); if(!pc.length) return;
       const labels = new Set(pc.map(c=>c.suit+c.rank));
-      document.querySelectorAll(".hand .card").forEach(el=>{ const lab = el.getAttribute('aria-label').replace(/\s/g,''); if(labels.has(lab)) el.classList.add('playable'); });
+      $$(".hand .card").forEach(el=>{ const lab = el.getAttribute('aria-label').replace(/\s/g,''); if(labels.has(lab)) el.classList.add('playable'); });
     });
-    document.querySelector("#deckMode").addEventListener('change', e=>{ st.deckMode = Number(e.target.value); startGame(); })
+    $("#deckMode").addEventListener('change', e=>{ st.deckMode = Number(e.target.value); startGame(); })
 
     // 初回開始
     startGame();
-    document.querySelector("#resetHS").addEventListener('click', ()=>{ localStorage.removeItem(HS_KEY); renderHighScore(); });
+    $("#resetHS").addEventListener('click', ()=>{ localStorage.removeItem(HS_KEY); renderHighScore(); });
   </script>
 </body>
 </html>
