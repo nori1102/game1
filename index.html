@@ -136,13 +136,23 @@
     };
 
     // localStorage から復元
+    function hasAnyDisc(b){
+      for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) if(b[r][c]!==EMPTY) return true;
+      return false;
+    }
     const saved = localStorage.getItem('othello_state_v1');
     if(saved){
       try{ state = JSON.parse(saved); }catch(e){}
     }
+    // 初回表示で石が無い（または壊れた保存データ）の場合は初期配置で開始
+    if(!saved || !state || !Array.isArray(state.board) || !hasAnyDisc(state.board)){
+      state = { board: createInitialBoard(), player: BLACK, history: [], aiWhite: true };
+      localStorage.setItem('othello_state_v1', JSON.stringify(state));
+    }
 
     buildBoardCells();
     render();
+    setTimeout(()=>setStatus('新しいゲームを開始しました。黒の手番です。'), 0);
 
     restartBtn.addEventListener('click', ()=>{ reset(); });
     undoBtn.addEventListener('click', ()=>{ undo(); });
