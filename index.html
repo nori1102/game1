@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>間違い探し（3か所固定・見やすく改良）</title>
+<title>間違い探し（3か所固定・大きめ＆アニメベース）</title>
 <style>
   :root{
     --bg:#0b1020; --fg:#e6f3ff; --line:#22314f;
@@ -31,7 +31,7 @@
   }
   .reticle{
     position:absolute; pointer-events:none; border:2px solid rgba(255,255,255,.45);
-    border-radius:50%; width:52px; height:52px; transform:translate(-50%,-50%);
+    border-radius:50%; width:56px; height:56px; transform:translate(-50%,-50%);
     box-shadow:0 0 0 2px rgba(0,0,0,.25) inset;
   }
 </style>
@@ -39,7 +39,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>間違い探し（3か所固定・見やすく改良）</h1>
+    <h1>間違い探し（3か所固定・大きめ＆アニメベース）</h1>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button id="startBtn" class="btn">▶ スタート</button>
       <button id="revealBtn" class="btn">👀 答えを見る</button>
@@ -58,8 +58,8 @@
       <div id="menu" class="overlay">
         <div class="card">
           <h2>遊び方</h2>
-        <p>スタートでWEBから高精細画像を左右に表示。右には<b>常に3か所</b>の違いを仕込みます。クリックで指定！</p>
-          <p style="opacity:.85">開始直後3秒だけ、正解エリアが薄く点滅します。分かりづらい場合は「答えを見る」。</p>
+          <p>スタートでWEBから高精細画像を左右に表示。右には<b>常に3か所</b>の違いを仕込みます。クリックで指定！</p>
+          <p style="opacity:.85">開始直後3秒は薄い点滅ヒント。60秒 or ミス6回で自動的に答えを表示します。</p>
           <button id="startBig" class="btn">▶ スタート</button>
         </div>
       </div>
@@ -72,265 +72,268 @@
 
 <script>
 (function(){
-  const canL = document.getElementById('canL');
-  const canR = document.getElementById('canR');
-  const ctxL = canL.getContext('2d');
-  const ctxR = canR.getContext('2d');
-  const startBtn = document.getElementById('startBtn');
-  const revealBtn = document.getElementById('revealBtn');
-  const startBig = document.getElementById('startBig');
-  const menu = document.getElementById('menu');
-  const boardR = document.getElementById('boardR');
-  const ret = document.getElementById('ret');
+  const canL=document.getElementById('canL'), canR=document.getElementById('canR');
+  const ctxL=canL.getContext('2d'), ctxR=canR.getContext('2d');
+  const startBtn=document.getElementById('startBtn'), startBig=document.getElementById('startBig');
+  const revealBtn=document.getElementById('revealBtn'), menu=document.getElementById('menu');
+  const boardR=document.getElementById('boardR'), ret=document.getElementById('ret');
+  const remainEl=document.getElementById('remain'), missEl=document.getElementById('miss'), timeEl=document.getElementById('time');
 
-  const remainEl = document.getElementById('remain');
-  const timeEl = document.getElementById('time');
-  const missEl = document.getElementById('miss');
+  const DIFF_COUNT=3, AUTO_REVEAL_TIME=60000, AUTO_REVEAL_MISS=6, NEAR_FACTOR=1.6;
 
-  const DIFF_COUNT = 3;
-  const AUTO_REVEAL_TIME = 60_000; // 60秒
-  const AUTO_REVEAL_MISS = 6;      // ミス6回で自動回答
-  const NEAR_FACTOR = 1.6;         // ニアミス判定（半径の1.6倍）
+  // 画像＆オフスク
+  let img=new Image(), offL=null, offR=null, imgW=0, imgH=0;
+  // 状態
+  let diffs=[], found=0, missCount=0, revealed=false;
+  let timerId=null, tStart=0, autoRevealTimer=null, introPulseUntil=0;
+  // アニメ（Ken Burns）
+  const anim={s:1, tx:0, ty:0, t0:performance.now()};
+  let rafId=null;
 
-  let img = new Image();
-  let diffs = []; // {x,y,r,found:false}
-  let found = 0;
-  let missCount = 0;
-  let timerId = null, tStart = 0, autoRevealTimer = null;
-  let introPulseTimer = null;
+  function fmtTime(ms){const s=Math.floor(ms/1000);return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
+  function startTimer(){clearInterval(timerId);tStart=performance.now();timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250);
+    clearTimeout(autoRevealTimer);autoRevealTimer=setTimeout(()=>revealAnswers(true),AUTO_REVEAL_TIME);}
+  function stopTimer(){clearInterval(timerId);clearTimeout(autoRevealTimer);}
 
-  function fmtTime(ms){ const s=Math.floor(ms/1000); const m=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return `${m}:${ss}`; }
-  function startTimer(){
-    clearInterval(timerId);
-    tStart=performance.now();
-    timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250);
-    clearTimeout(autoRevealTimer);
-    autoRevealTimer=setTimeout(()=>revealAnswers(true), AUTO_REVEAL_TIME);
-  }
-  function stopTimer(){ clearInterval(timerId); clearTimeout(autoRevealTimer); clearInterval(introPulseTimer); }
-
-  function drawFit(img, canvas, ctx){
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.style.width = Math.min(640, img.naturalWidth) + 'px';
-    const scale = img.naturalWidth / img.naturalHeight;
-    const cssW = canvas.clientWidth || Math.min(640, img.naturalWidth);
-    const cssH = Math.round(cssW / scale);
-    canvas.style.height = cssH + 'px';
-    canvas.width = Math.round(img.naturalWidth * dpr);
-    canvas.height = Math.round(img.naturalHeight * dpr);
+  function setCanvasToImageSize(img, canvas, ctx){
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    canvas.style.width=Math.min(640,img.naturalWidth)+'px';
+    const scale=img.naturalWidth/img.naturalHeight;
+    const cssW=canvas.clientWidth||Math.min(640,img.naturalWidth);
+    const cssH=Math.round(cssW/scale);
+    canvas.style.height=cssH+'px';
+    canvas.width=Math.round(img.naturalWidth*dpr);
+    canvas.height=Math.round(img.naturalHeight*dpr);
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,canvas.width/dpr,canvas.height/dpr);
-    ctx.drawImage(img, 0, 0);
   }
 
   async function fetchRandomImage(){
     const api='https://commons.wikimedia.org/w/api.php';
     const url=`${api}?action=query&generator=random&grnnamespace=6&grnlimit=1&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=3000&format=json&origin=*`;
-    const res=await fetch(url);
-    const data=await res.json();
-    const page = data?.query?.pages && Object.values(data.query.pages)[0];
-    const info = page?.imageinfo?.[0];
-    if(!info?.url) throw new Error('画像取得に失敗');
-    return info.url;
+    const res=await fetch(url); const data=await res.json();
+    const page=data?.query?.pages && Object.values(data.query.pages)[0]; const info=page?.imageinfo?.[0];
+    if(!info?.url) throw new Error('画像取得に失敗'); return info.url;
   }
 
+  function buildOffscreens(){
+    offL=document.createElement('canvas'); offR=document.createElement('canvas');
+    offL.width=imgW; offL.height=imgH; offR.width=imgW; offR.height=imgH;
+    offL.getContext('2d').drawImage(img,0,0); offR.getContext('2d').drawImage(img,0,0);
+  }
+
+  // 右画像へ「大きな」違いを埋め込む
   function implantDifferences(){
-    diffs = [];
-    const dpr = Math.min(window.devicePixelRatio||1,2);
-    const w = Math.round(canR.width / dpr);
-    const h = Math.round(canR.height / dpr);
-
-    // ★ 半径を拡大（見やすく）
-    const RMIN=40, RMAX=70, MARGIN=60;
+    diffs=[];
+    // さらに倍：半径 80〜140px
+    const RMIN=80, RMAX=140, MARGIN=120;
     for(let i=0;i<DIFF_COUNT;i++){
-      const r = Math.floor(RMIN + Math.random()*(RMAX-RMIN));
-      const x = Math.floor(MARGIN + Math.random()*(w - MARGIN*2));
-      const y = Math.floor(MARGIN + Math.random()*(h - MARGIN*2));
-      diffs.push({x, y, r, found:false});
+      const r=Math.floor(RMIN+Math.random()*(RMAX-RMIN));
+      const x=Math.floor(MARGIN+Math.random()*(imgW-MARGIN*2));
+      const y=Math.floor(MARGIN+Math.random()*(imgH-MARGIN*2));
+      diffs.push({x,y,r,found:false});
     }
+    const ctx=offR.getContext('2d');
+    const data=ctx.getImageData(0,0,imgW,imgH), arr=data.data;
 
-    // 右画像の特定領域で 色相/明度/彩度 を強めに変更（自然だが目につく）
-    const imgData = ctxR.getImageData(0,0,w,h);
-    const arr = imgData.data;
-    function inCircle(cx,cy,cr,px,py){ const dx=px-cx, dy=py-cy; return dx*dx+dy*dy<=cr*cr; }
-    function rgb2hsl(r,g,b){
-      r/=255; g/=255; b/=255; const max=Math.max(r,g,b), min=Math.min(r,g,b);
-      let h,s,l=(max+min)/2;
-      if(max===min){ h=s=0; } else {
-        const d=max-min; s = l>0.5 ? d/(2-max-min) : d/(max+min);
-        switch(max){ case r: h=(g-b)/d + (g<b?6:0); break; case g: h=(b-r)/d + 2; break; case b: h=(r-g)/d + 4; break; } h/=6;
-      } return [h,s,l];
-    }
-    function hsl2rgb(h,s,l){
-      function hue2rgb(p,q,t){ if(t<0)t+=1; if(t>1)t-=1; if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3 - t)*6; return p; }
-      let r,g,b; if(s===0){ r=g=b=l; } else { const q = l<0.5 ? l*(1+s) : l+s - l*s, p=2*l-q; r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3); }
-      return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
-    }
+    function inCircle(cx,cy,cr,px,py){const dx=px-cx, dy=py-cy; return dx*dx+dy*dy<=cr*cr;}
+    function rgb2hsl(r,g,b){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b);let h,s,l=(max+min)/2;
+      if(max===min){h=s=0;}else{const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);switch(max){case r:h=(g-b)/d+(g<b?6:0);break;case g:h=(b-r)/d+2;break;case b:h=(r-g)/d+4;break;}h/=6;}return[h,s,l];}
+    function hsl2rgb(h,s,l){function hue2rgb(p,q,t){if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3 - t)*6;return p;}
+      let r,g,b;if(s===0){r=g=b=l;}else{const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q;r=hue2rgb(p,q,h+1/3);g=hue2rgb(p,q,h);b=hue2rgb(p,q,h-1/3);}return[Math.round(r*255),Math.round(g*255),Math.round(b*255)];}
 
     diffs.forEach((d,idx)=>{
-      const hueShift = ((idx+1)*0.12) * (Math.random()<0.5?-1:1); // ±約43°
-      const lightDelta = (Math.random()*0.30 - 0.15); // -0.15〜+0.15
-      const satDelta = (Math.random()*0.40 - 0.20);   // 彩度±0.2
+      const hueShift=((idx+1)*0.12)*(Math.random()<0.5?-1:1); // ±約43°
+      const lightDelta=(Math.random()*0.30-0.15);             // 明るさ±0.15
+      const satDelta=(Math.random()*0.45-0.22);               // 彩度±0.22
       for(let py=d.y-d.r; py<=d.y+d.r; py++){
-        if(py<0||py>=h) continue;
+        if(py<0||py>=imgH) continue;
         for(let px=d.x-d.r; px<=d.x+d.r; px++){
-          if(px<0||px>=w) continue;
+          if(px<0||px>=imgW) continue;
           if(!inCircle(d.x,d.y,d.r,px,py)) continue;
-          const i=(py*w+px)*4;
-          const r=arr[i], g=arr[i+1], b=arr[i+2];
+          const i=(py*imgW+px)*4; const r=arr[i], g=arr[i+1], b=arr[i+2];
           let [hh,ss,ll]=rgb2hsl(r,g,b);
-          hh = (hh + hueShift + 1)%1;
-          ll = Math.max(0, Math.min(1, ll + lightDelta));
-          ss = Math.max(0, Math.min(1, ss + satDelta));
-          const [nr,ng,nb]=hsl2rgb(hh,ss,ll);
-          arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb;
+          hh=(hh+hueShift+1)%1; ll=Math.max(0,Math.min(1,ll+lightDelta)); ss=Math.max(0,Math.min(1,ss+satDelta));
+          const [nr,ng,nb]=hsl2rgb(hh,ss,ll); arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb;
         }
       }
     });
-    ctxR.putImageData(imgData, 0, 0);
+    ctx.putImageData(data,0,0);
 
-    found = 0; missCount=0;
-    remainEl.textContent = (DIFF_COUNT - found);
-    missEl.textContent = missCount;
+    found=0; missCount=0; revealed=false;
+    remainEl.textContent=(DIFF_COUNT-found); missEl.textContent=missCount;
+    introPulseUntil=performance.now()+3000; // 開始3秒ヒント
     startTimer();
+  }
 
-    // ★ 開始直後3秒だけ薄い点滅（見失い防止）
-    let t=0;
-    introPulseTimer = setInterval(()=>{
-      t++;
+  // === アニメーション描画（Ken Burns＋オーバーレイも同変換で描画） ===
+  function drawSide(ctx, off){
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const w=canL.width/dpr, h=canL.height/dpr; // 両キャンバス同サイズ＝画像原寸
+    const t=(performance.now()-anim.t0)/1000;
+    // ゆるいズーム＆パン
+    anim.s=1.02+0.02*Math.sin(t/1.8);
+    anim.tx=Math.sin(t/2.4)*12;
+    anim.ty=Math.cos(t/3.0)*8;
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    ctx.save();
+    ctx.translate(imgW/2+anim.tx, imgH/2+anim.ty);
+    ctx.scale(anim.s, anim.s);
+    ctx.drawImage(off, -imgW/2, -imgH/2);
+    ctx.restore();
+  }
+
+  // エフェクト描画（画像座標で管理→同じ変換で重ね描画）
+  const effects=[]; // {type:'pulse'|'cross'|'near'|'reveal', x,y,r, life(0..1)}
+  function addEffect(e){effects.push(e);}
+  function drawEffects(ctx){
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const w=canR.width/dpr, h=canR.height/dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.save();
+    ctx.translate(imgW/2+anim.tx, imgH/2+anim.ty);
+    ctx.scale(anim.s, anim.s);
+
+    // 開始ヒント（時間内だけ薄い点滅）
+    if(performance.now() < introPulseUntil && !revealed){
+      const a=0.18+0.12*Math.sin(performance.now()/160);
       diffs.forEach(d=>{
         if(d.found) return;
-        ctxR.save();
-        ctxR.lineWidth = 4;
-        ctxR.globalAlpha = 0.18 + 0.12*Math.sin(t*0.6);
-        ctxR.strokeStyle='var(--hint)';
-        ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+10,0,Math.PI*2); ctxR.stroke();
-        ctxR.restore();
+        ctx.save(); ctx.lineWidth=6; ctx.globalAlpha=a; ctx.strokeStyle='var(--hint)';
+        ctx.beginPath(); ctx.arc(d.x,d.y,d.r+14,0,Math.PI*2); ctx.stroke(); ctx.restore();
       });
-      if(t>45){ clearInterval(introPulseTimer); }
-    }, 60);
+    }
+
+    // 常時の「答え表示」
+    if(revealed){
+      diffs.forEach(d=>{
+        if(!d.found){
+          ctx.save(); ctx.lineWidth=8; ctx.globalAlpha=.95; ctx.strokeStyle='var(--hint)';
+          ctx.beginPath(); ctx.arc(d.x,d.y,d.r+16,0,Math.PI*2); ctx.stroke(); ctx.restore();
+        }
+      });
+    }
+
+    // 一時エフェクト
+    for(let i=effects.length-1;i>=0;i--){
+      const e=effects[i];
+      if(e.type==='pulse'){
+        const rr=e.r + (1-e.life)*40; const a=e.life*0.9;
+        ctx.save(); ctx.lineWidth=10; ctx.globalAlpha=a; ctx.strokeStyle='var(--good)';
+        ctx.beginPath(); ctx.arc(e.x,e.y,rr,0,Math.PI*2); ctx.stroke(); ctx.restore();
+      }else if(e.type==='cross'){
+        const s=28+(1-e.life)*12; const a=.95*e.life;
+        ctx.save(); ctx.lineWidth=8; ctx.globalAlpha=a; ctx.strokeStyle='var(--bad)';
+        ctx.beginPath(); ctx.moveTo(e.x-s,e.y-s); ctx.lineTo(e.x+s,e.y+s);
+        ctx.moveTo(e.x+s,e.y-s); ctx.lineTo(e.x-s,e.y+s); ctx.stroke(); ctx.restore();
+      }else if(e.type==='near'){
+        const a=.7*e.life;
+        ctx.save(); ctx.lineWidth=7; ctx.globalAlpha=a; ctx.setLineDash([12,10]); ctx.strokeStyle='var(--hint)';
+        ctx.beginPath(); ctx.arc(e.x,e.y,e.r*NEAR_FACTOR,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+      }
+      e.life -= 0.06;
+      if(e.life<=0) effects.splice(i,1);
+    }
+
+    ctx.restore();
   }
 
-  // 視覚フィードバック
-  function pulseRing(x,y,r,color){
-    let a=0.9, rr=r+12;
-    const id = setInterval(()=>{
-      ctxR.save();
-      ctxR.lineWidth = 8;
-      ctxR.strokeStyle = color;
-      ctxR.globalAlpha = a;
-      ctxR.beginPath(); ctxR.arc(x,y,rr,0,Math.PI*2); ctxR.stroke();
-      ctxR.restore();
-      a -= 0.16; rr += 7;
-      if(a<=0){ clearInterval(id); }
-    }, 40);
+  function loop(){
+    if(!offL||!offR) return;
+    drawSide(ctxL, offL);
+    drawSide(ctxR, offR);
+    drawEffects(ctxR);
+    rafId=requestAnimationFrame(loop);
   }
-  function bigCross(x,y,size,color){
-    const s=size;
-    ctxR.save();
-    ctxR.lineWidth = 7;
-    ctxR.strokeStyle = color;
-    ctxR.globalAlpha = .95;
-    ctxR.beginPath(); ctxR.moveTo(x-s,y-s); ctxR.lineTo(x+s,y+s); ctxR.moveTo(x+s,y-s); ctxR.lineTo(x-s,y+s); ctxR.stroke();
-    ctxR.restore();
-  }
-  function nearRing(x,y,r){
-    ctxR.save();
-    ctxR.lineWidth = 5;
-    ctxR.strokeStyle = 'var(--hint)';
-    ctxR.globalAlpha = .9;
-    ctxR.setLineDash([10,8]);
-    ctxR.beginPath(); ctxR.arc(x,y,r*NEAR_FACTOR,0,Math.PI*2); ctxR.stroke();
-    ctxR.setLineDash([]);
-    ctxR.restore();
+
+  // クリック→キャンバス座標→画像座標へ逆変換
+  function canvasToImageCoords(xc,yc){
+    const cx=imgW/2, cy=imgH/2;
+    const xi = ((xc - (cx + anim.tx)) / anim.s) + cx;
+    const yi = ((yc - (cy + anim.ty)) / anim.s) + cy;
+    return {x:xi, y:yi};
   }
 
   function revealAnswers(auto=false){
-    stopTimer();
-    diffs.forEach(d=>{
-      if(!d.found){
-        ctxR.save();
-        ctxR.lineWidth=6; ctxR.strokeStyle='var(--hint)'; ctxR.globalAlpha=.95;
-        ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+12,0,Math.PI*2); ctxR.stroke(); ctxR.restore();
-      }
-    });
-    remainEl.textContent = 0;
-    const msg = auto
-      ? '時間/ミス上限になったので答えを表示しました。スタートで再挑戦できます。'
-      : '答えを表示しました。スタートで再挑戦できます。';
-    setTimeout(()=>alert(msg),10);
+    stopTimer(); revealed=true;
+    remainEl.textContent=0;
+    setTimeout(()=>alert(auto?'時間/ミス上限で答えを表示しました。スタートで再挑戦できます。':'答えを表示しました。スタートで再挑戦できます。'),10);
   }
 
   async function startGame(){
     menu.style.display='none';
+    revealed=false; effects.length=0;
     remainEl.textContent='-'; timeEl.textContent='00:00'; missEl.textContent='0';
-    stopTimer();
+    stopTimer(); if(rafId) cancelAnimationFrame(rafId);
+
     try{
-      const src = await fetchRandomImage();
-      img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = ()=>{
-        drawFit(img, canL, ctxL);
-        drawFit(img, canR, ctxR);
+      const src=await fetchRandomImage();
+      img=new Image(); img.crossOrigin="anonymous";
+      img.onload=()=>{
+        imgW=img.naturalWidth; imgH=img.naturalHeight;
+        setCanvasToImageSize(img, canL, ctxL);
+        setCanvasToImageSize(img, canR, ctxR);
+        buildOffscreens();
         implantDifferences();
+        anim.t0=performance.now();
+        loop();
       };
-      img.src = src;
+      img.src=src;
     }catch(e){
-      console.error(e);
-      alert('画像の取得に失敗しました。もう一度スタートしてください。');
+      console.error(e); alert('画像の取得に失敗しました。もう一度スタートしてください。');
       menu.style.display='flex';
     }
   }
 
   function checkHit(px,py){
+    const pt=canvasToImageCoords(px,py);
     for(const d of diffs){
-      const dist = Math.hypot(px-d.x, py-d.y);
+      const dist=Math.hypot(pt.x-d.x, pt.y-d.y);
       if(!d.found && dist<=d.r){
-        d.found = true; found++;
-        pulseRing(d.x,d.y,d.r,'var(--good)');
-        remainEl.textContent = (DIFF_COUNT - found);
+        d.found=true; found++;
+        addEffect({type:'pulse', x:d.x, y:d.y, r:d.r, life:1});
+        remainEl.textContent=(DIFF_COUNT-found);
         if(found===DIFF_COUNT){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
         return;
       }
-      // ★ ニアミス（半径×1.6 以内）は黄色ガイド、ミスにしない
-      if(!d.found && dist<=d.r*NEAR_FACTOR){
-        nearRing(d.x,d.y,d.r);
+      if(!d.found && dist<=d.r*NEAR_FACTOR){ // ニアミスはガイドのみ
+        addEffect({type:'near', x:d.x, y:d.y, r:d.r, life:1});
         return;
       }
     }
-    // ミス（遠い場所）
-    missCount++; missEl.textContent = missCount;
-    bigCross(px,py,28,'var(--bad)');
+    // 遠い＝ミス
+    missCount++; missEl.textContent=missCount;
+    addEffect({type:'cross', x:pt.x, y:pt.y, life:1});
     boardR.classList.remove('shake'); void boardR.offsetWidth; boardR.classList.add('shake');
     if(missCount>=AUTO_REVEAL_MISS){ revealAnswers(true); }
   }
 
-  canR.addEventListener('click',(e)=>{
+  canR.addEventListener('click', e=>{
     const r=canR.getBoundingClientRect();
     const dpr=Math.min(window.devicePixelRatio||1,2);
     const scaleX=canR.width/dpr/r.width, scaleY=canR.height/dpr/r.height;
     const x=(e.clientX-r.left)*scaleX, y=(e.clientY-r.top)*scaleY;
     checkHit(x,y);
-  },{passive:true});
+  }, {passive:true});
 
-  // 照準ガイド
+  // 照準（見た目ガイド）
   function moveReticle(e){
     const r=canR.getBoundingClientRect();
     const cx=(e.touches?e.touches[0].clientX:e.clientX);
     const cy=(e.touches?e.touches[0].clientY:e.clientY);
-    if(cx<r.left || cx>r.right || cy<r.top || cy>r.bottom){ ret.style.display='none'; return; }
+    if(cx<r.left||cx>r.right||cy<r.top||cy>r.bottom){ ret.style.display='none'; return; }
     ret.style.display='block';
-    ret.style.left = (cx - r.left) + 'px';
-    ret.style.top  = (cy - r.top)  + 'px';
+    ret.style.left=(cx-r.left)+'px'; ret.style.top=(cy-r.top)+'px';
   }
   canR.addEventListener('mousemove',moveReticle,{passive:true});
   canR.addEventListener('mouseleave',()=>{ ret.style.display='none'; });
   canR.addEventListener('touchstart',moveReticle,{passive:true});
   canR.addEventListener('touchmove',moveReticle,{passive:true});
 
-  startBtn.onclick = startGame;
-  startBig.onclick = startGame;
-  revealBtn.onclick = ()=>revealAnswers(false);
+  startBtn.onclick=startGame; startBig.onclick=startGame;
+  revealBtn.onclick=()=>revealAnswers(false);
 
   menu.style.display='flex';
 })();
