@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>間違い探し（3か所固定・WEBランダム・改良UI）</title>
+<title>間違い探し（3か所固定・見やすく改良）</title>
 <style>
   :root{
     --bg:#0b1020; --fg:#e6f3ff; --line:#22314f;
@@ -24,16 +24,14 @@
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(0,0,0,.45)}
   .card{background:rgba(8,12,28,.85);border:1px solid var(--line);border-radius:16px;padding:22px 20px;max-width:560px}
   footer{opacity:.75;font-size:12px;margin-top:10px;text-align:center}
-  /* 右ボードのシェイク演出 */
   .shake{animation:shake .25s ease}
   @keyframes shake{
     0%{transform:translateX(0)} 25%{transform:translateX(-6px)}
     50%{transform:translateX(6px)} 75%{transform:translateX(-4px)} 100%{transform:translateX(0)}
   }
-  /* 準ターゲット（照準ガイド） */
   .reticle{
     position:absolute; pointer-events:none; border:2px solid rgba(255,255,255,.45);
-    border-radius:50%; width:46px; height:46px; transform:translate(-50%,-50%);
+    border-radius:50%; width:52px; height:52px; transform:translate(-50%,-50%);
     box-shadow:0 0 0 2px rgba(0,0,0,.25) inset;
   }
 </style>
@@ -41,7 +39,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>間違い探し（3か所固定・WEBランダム）</h1>
+    <h1>間違い探し（3か所固定・見やすく改良）</h1>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button id="startBtn" class="btn">▶ スタート</button>
       <button id="revealBtn" class="btn">👀 答えを見る</button>
@@ -60,8 +58,8 @@
       <div id="menu" class="overlay">
         <div class="card">
           <h2>遊び方</h2>
-          <p>スタートを押すとWEBからランダムの高精細画像を左右に表示します。右には<b>常に3か所</b>だけ微妙な違いを仕込みます。見つけた箇所をクリック！</p>
-          <p style="opacity:.85">分かりづらいときは「答えを見る」で終了できます（または60秒経過／ミス6回で自動表示）。</p>
+        <p>スタートでWEBから高精細画像を左右に表示。右には<b>常に3か所</b>の違いを仕込みます。クリックで指定！</p>
+          <p style="opacity:.85">開始直後3秒だけ、正解エリアが薄く点滅します。分かりづらい場合は「答えを見る」。</p>
           <button id="startBig" class="btn">▶ スタート</button>
         </div>
       </div>
@@ -91,13 +89,15 @@
 
   const DIFF_COUNT = 3;
   const AUTO_REVEAL_TIME = 60_000; // 60秒
-  const AUTO_REVEAL_MISS = 6;      // ミス6回で自動終了
+  const AUTO_REVEAL_MISS = 6;      // ミス6回で自動回答
+  const NEAR_FACTOR = 1.6;         // ニアミス判定（半径の1.6倍）
 
   let img = new Image();
   let diffs = []; // {x,y,r,found:false}
   let found = 0;
   let missCount = 0;
   let timerId = null, tStart = 0, autoRevealTimer = null;
+  let introPulseTimer = null;
 
   function fmtTime(ms){ const s=Math.floor(ms/1000); const m=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return `${m}:${ss}`; }
   function startTimer(){
@@ -107,9 +107,8 @@
     clearTimeout(autoRevealTimer);
     autoRevealTimer=setTimeout(()=>revealAnswers(true), AUTO_REVEAL_TIME);
   }
-  function stopTimer(){ clearInterval(timerId); clearTimeout(autoRevealTimer); }
+  function stopTimer(){ clearInterval(timerId); clearTimeout(autoRevealTimer); clearInterval(introPulseTimer); }
 
-  // 高精細描画
   function drawFit(img, canvas, ctx){
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.style.width = Math.min(640, img.naturalWidth) + 'px';
@@ -124,7 +123,6 @@
     ctx.drawImage(img, 0, 0);
   }
 
-  // 画像取得
   async function fetchRandomImage(){
     const api='https://commons.wikimedia.org/w/api.php';
     const url=`${api}?action=query&generator=random&grnnamespace=6&grnlimit=1&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=3000&format=json&origin=*`;
@@ -136,14 +134,14 @@
     return info.url;
   }
 
-  // 差分を右に埋め込む（色相/明度を局所変更）
   function implantDifferences(){
     diffs = [];
     const dpr = Math.min(window.devicePixelRatio||1,2);
     const w = Math.round(canR.width / dpr);
     const h = Math.round(canR.height / dpr);
 
-    const RMIN=22, RMAX=40, MARGIN=48;
+    // ★ 半径を拡大（見やすく）
+    const RMIN=40, RMAX=70, MARGIN=60;
     for(let i=0;i<DIFF_COUNT;i++){
       const r = Math.floor(RMIN + Math.random()*(RMAX-RMIN));
       const x = Math.floor(MARGIN + Math.random()*(w - MARGIN*2));
@@ -151,44 +149,28 @@
       diffs.push({x, y, r, found:false});
     }
 
+    // 右画像の特定領域で 色相/明度/彩度 を強めに変更（自然だが目につく）
     const imgData = ctxR.getImageData(0,0,w,h);
     const arr = imgData.data;
-
     function inCircle(cx,cy,cr,px,py){ const dx=px-cx, dy=py-cy; return dx*dx+dy*dy<=cr*cr; }
     function rgb2hsl(r,g,b){
-      r/=255; g/=255; b/=255;
-      const max=Math.max(r,g,b), min=Math.min(r,g,b);
+      r/=255; g/=255; b/=255; const max=Math.max(r,g,b), min=Math.min(r,g,b);
       let h,s,l=(max+min)/2;
-      if(max===min){ h=s=0; }
-      else{
+      if(max===min){ h=s=0; } else {
         const d=max-min; s = l>0.5 ? d/(2-max-min) : d/(max+min);
-        switch(max){
-          case r: h=(g-b)/d + (g<b?6:0); break;
-          case g: h=(b-r)/d + 2; break;
-          case b: h=(r-g)/d + 4; break;
-        } h/=6;
-      }
-      return [h,s,l];
+        switch(max){ case r: h=(g-b)/d + (g<b?6:0); break; case g: h=(b-r)/d + 2; break; case b: h=(r-g)/d + 4; break; } h/=6;
+      } return [h,s,l];
     }
     function hsl2rgb(h,s,l){
-      function hue2rgb(p,q,t){ if(t<0)t+=1; if(t>1)t-=1;
-        if(t<1/6)return p+(q-p)*6*t;
-        if(t<1/2)return q;
-        if(t<2/3)return p+(q-p)*(2/3 - t)*6;
-        return p;
-      }
-      let r,g,b;
-      if(s===0){ r=g=b=l; }
-      else{
-        const q = l<0.5 ? l*(1+s) : l+s - l*s, p = 2*l - q;
-        r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3);
-      }
+      function hue2rgb(p,q,t){ if(t<0)t+=1; if(t>1)t-=1; if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3 - t)*6; return p; }
+      let r,g,b; if(s===0){ r=g=b=l; } else { const q = l<0.5 ? l*(1+s) : l+s - l*s, p=2*l-q; r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3); }
       return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
     }
 
     diffs.forEach((d,idx)=>{
-      const hueShift = ((idx+1)*0.08) * (Math.random()<0.5?-1:1);
-      const lightDelta = (Math.random()*0.18 - 0.09); // 少し控えめに
+      const hueShift = ((idx+1)*0.12) * (Math.random()<0.5?-1:1); // ±約43°
+      const lightDelta = (Math.random()*0.30 - 0.15); // -0.15〜+0.15
+      const satDelta = (Math.random()*0.40 - 0.20);   // 彩度±0.2
       for(let py=d.y-d.r; py<=d.y+d.r; py++){
         if(py<0||py>=h) continue;
         for(let px=d.x-d.r; px<=d.x+d.r; px++){
@@ -199,63 +181,86 @@
           let [hh,ss,ll]=rgb2hsl(r,g,b);
           hh = (hh + hueShift + 1)%1;
           ll = Math.max(0, Math.min(1, ll + lightDelta));
+          ss = Math.max(0, Math.min(1, ss + satDelta));
           const [nr,ng,nb]=hsl2rgb(hh,ss,ll);
           arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb;
         }
       }
     });
-
     ctxR.putImageData(imgData, 0, 0);
-    found = 0; missCount = 0;
+
+    found = 0; missCount=0;
     remainEl.textContent = (DIFF_COUNT - found);
     missEl.textContent = missCount;
     startTimer();
+
+    // ★ 開始直後3秒だけ薄い点滅（見失い防止）
+    let t=0;
+    introPulseTimer = setInterval(()=>{
+      t++;
+      diffs.forEach(d=>{
+        if(d.found) return;
+        ctxR.save();
+        ctxR.lineWidth = 4;
+        ctxR.globalAlpha = 0.18 + 0.12*Math.sin(t*0.6);
+        ctxR.strokeStyle='var(--hint)';
+        ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+10,0,Math.PI*2); ctxR.stroke();
+        ctxR.restore();
+      });
+      if(t>45){ clearInterval(introPulseTimer); }
+    }, 60);
   }
 
   // 視覚フィードバック
   function pulseRing(x,y,r,color){
-    // 太いリング＋パルス拡大
-    let a=0.9, rr=r+10;
+    let a=0.9, rr=r+12;
     const id = setInterval(()=>{
       ctxR.save();
-      ctxR.lineWidth = 6;
+      ctxR.lineWidth = 8;
       ctxR.strokeStyle = color;
       ctxR.globalAlpha = a;
       ctxR.beginPath(); ctxR.arc(x,y,rr,0,Math.PI*2); ctxR.stroke();
       ctxR.restore();
-      a -= 0.18; rr += 6;
+      a -= 0.16; rr += 7;
       if(a<=0){ clearInterval(id); }
     }, 40);
   }
   function bigCross(x,y,size,color){
     const s=size;
     ctxR.save();
-    ctxR.lineWidth = 6;
+    ctxR.lineWidth = 7;
     ctxR.strokeStyle = color;
     ctxR.globalAlpha = .95;
     ctxR.beginPath(); ctxR.moveTo(x-s,y-s); ctxR.lineTo(x+s,y+s); ctxR.moveTo(x+s,y-s); ctxR.lineTo(x-s,y+s); ctxR.stroke();
     ctxR.restore();
   }
+  function nearRing(x,y,r){
+    ctxR.save();
+    ctxR.lineWidth = 5;
+    ctxR.strokeStyle = 'var(--hint)';
+    ctxR.globalAlpha = .9;
+    ctxR.setLineDash([10,8]);
+    ctxR.beginPath(); ctxR.arc(x,y,r*NEAR_FACTOR,0,Math.PI*2); ctxR.stroke();
+    ctxR.setLineDash([]);
+    ctxR.restore();
+  }
 
-  // 答え表示＆終了
   function revealAnswers(auto=false){
     stopTimer();
-    // 残りも含めて全て表示（黄色）
     diffs.forEach(d=>{
       if(!d.found){
         ctxR.save();
-        ctxR.lineWidth=5; ctxR.strokeStyle='var(--hint)'; ctxR.globalAlpha=.9;
-        ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+8,0,Math.PI*2); ctxR.stroke(); ctxR.restore();
+        ctxR.lineWidth=6; ctxR.strokeStyle='var(--hint)'; ctxR.globalAlpha=.95;
+        ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+12,0,Math.PI*2); ctxR.stroke(); ctxR.restore();
       }
     });
     remainEl.textContent = 0;
     const msg = auto
-      ? '時間/ミス上限に達したため、答えを表示しました。もう一度スタートで再挑戦できます。'
-      : '答えを表示しました。もう一度スタートで再挑戦できます。';
-    setTimeout(()=>alert(msg), 10);
+      ? '時間/ミス上限になったので答えを表示しました。スタートで再挑戦できます。'
+      : '答えを表示しました。スタートで再挑戦できます。';
+    setTimeout(()=>alert(msg),10);
   }
 
-  // ゲーム開始
   async function startGame(){
     menu.style.display='none';
     remainEl.textContent='-'; timeEl.textContent='00:00'; missEl.textContent='0';
@@ -272,25 +277,30 @@
       img.src = src;
     }catch(e){
       console.error(e);
-      alert('画像の取得に失敗しました。もう一度お試しください。');
+      alert('画像の取得に失敗しました。もう一度スタートしてください。');
       menu.style.display='flex';
     }
   }
 
-  // クリック判定（右のみ）
   function checkHit(px,py){
     for(const d of diffs){
-      if(!d.found && Math.hypot(px-d.x, py-d.y)<=d.r){
+      const dist = Math.hypot(px-d.x, py-d.y);
+      if(!d.found && dist<=d.r){
         d.found = true; found++;
         pulseRing(d.x,d.y,d.r,'var(--good)');
         remainEl.textContent = (DIFF_COUNT - found);
         if(found===DIFF_COUNT){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
         return;
       }
+      // ★ ニアミス（半径×1.6 以内）は黄色ガイド、ミスにしない
+      if(!d.found && dist<=d.r*NEAR_FACTOR){
+        nearRing(d.x,d.y,d.r);
+        return;
+      }
     }
-    // ミス
+    // ミス（遠い場所）
     missCount++; missEl.textContent = missCount;
-    bigCross(px,py,22,'var(--bad)');
+    bigCross(px,py,28,'var(--bad)');
     boardR.classList.remove('shake'); void boardR.offsetWidth; boardR.classList.add('shake');
     if(missCount>=AUTO_REVEAL_MISS){ revealAnswers(true); }
   }
@@ -303,7 +313,7 @@
     checkHit(x,y);
   },{passive:true});
 
-  // 準ターゲット（照準）を表示
+  // 照準ガイド
   function moveReticle(e){
     const r=canR.getBoundingClientRect();
     const cx=(e.touches?e.touches[0].clientX:e.clientX);
@@ -318,12 +328,10 @@
   canR.addEventListener('touchstart',moveReticle,{passive:true});
   canR.addEventListener('touchmove',moveReticle,{passive:true});
 
-  // ボタン
   startBtn.onclick = startGame;
   startBig.onclick = startGame;
   revealBtn.onclick = ()=>revealAnswers(false);
 
-  // 初期ガイド
   menu.style.display='flex';
 })();
 </script>
