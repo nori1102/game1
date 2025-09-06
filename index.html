@@ -3,122 +3,90 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>間違い探し PRO — 高精細・自動検出・WEBランダム対応</title>
+<title>間違い探し（3か所固定・WEBランダム）</title>
 <style>
   :root{
-    --bg:#0b1020; --fg:#e6f3ff; --panel:#0c1330; --line:#22314f;
-    --good:#23d18b; --bad:#ff4d6d; --hint:#f7b500; --accent:#61dafb;
+    --bg:#0b1020; --fg:#e6f3ff; --line:#22314f;
+    --good:#23d18b; --bad:#ff4d6d;
   }
   html,body{margin:0;background:radial-gradient(1200px 600px at 50% 5%, #151d3f 0%, #0b1020 55%, #070a14 100%);
     color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP",sans-serif}
   .wrap{max-width:1280px;margin:0 auto;padding:14px}
   header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
   h1{font-size:clamp(18px,3vw,24px);letter-spacing:.06em;margin:6px 0}
-  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .btn{appearance:none;border:1px solid var(--line);background:#0e1836;color:var(--fg);
-    border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:600}
+    border-radius:12px;padding:10px 16px;cursor:pointer;font-weight:600}
   .btn:hover{filter:brightness(1.08)}
-  .sel{appearance:none;border:1px solid var(--line);background:#0e1836;color:var(--fg);
-    border-radius:10px;padding:8px 10px}
-  .pill{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0e1533;font-variant-numeric:tabular-nums}
+  .pill{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#0e1533;font-variant-numeric:tabular-nums}
   .boards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
   .board{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.45);background:#0a122b}
   canvas{display:block;width:100%;height:auto}
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(0,0,0,.45)}
-  .card{background:rgba(8,12,28,.85);border:1px solid var(--line);border-radius:16px;padding:22px 20px;max-width:640px}
-  .legend{display:flex;gap:12px;justify-content:center;margin-top:8px;font-size:13px;opacity:.9}
-  .legend i{display:inline-block;width:14px;height:14px;border-radius:50%}
-  .legend .good{background:var(--good)} .legend .bad{background:var(--bad)} .legend .hint{background:var(--hint)}
-  .magnifier{position:absolute; pointer-events:none; border:2px solid var(--accent); border-radius:50%; width:160px; height:160px; overflow:hidden; display:none; box-shadow:0 6px 18px rgba(0,0,0,.5)}
-  .magnifier canvas{width:200%; height:200%; transform-origin:top left}
+  .card{background:rgba(8,12,28,.85);border:1px solid var(--line);border-radius:16px;padding:22px 20px;max-width:560px}
   footer{opacity:.75;font-size:12px;margin-top:10px;text-align:center}
-  .small{font-size:12px;opacity:.85}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>間違い探し PRO（高精細・自動検出・WEBランダム）</h1>
-    <div class="controls">
-      <label class="btn">左画像<input id="leftImg" type="file" accept="image/*" hidden></label>
-      <label class="btn">右画像<input id="rightImg" type="file" accept="image/*" hidden></label>
-      <button id="sampleBtn" class="btn">サンプル生成</button>
-      <button id="randomWebBtn" class="btn">🌐 WEBからランダム画像</button>
-      <select id="difficulty" class="sel" title="難易度">
-        <option value="easy">EASY</option>
-        <option value="normal" selected>NORMAL</option>
-        <option value="hard">HARD</option>
-        <option value="expert">EXPERT</option>
-      </select>
-      <button id="buildBtn" class="btn">差分を自動検出</button>
-      <button id="hintBtn" class="btn">💡 ヒント</button>
-      <button id="resetBtn" class="btn">↻ リセット</button>
+    <h1>間違い探し（3か所固定・WEBランダム）</h1>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="startBtn" class="btn">▶ スタート</button>
       <span class="pill">残り: <b id="remain">-</b></span>
       <span class="pill">タイム: <b id="time">00:00</b></span>
-      <span class="pill">ズーム: <b id="zoomState">OFF</b></span>
-      <button id="zoomBtn" class="btn">🔍 ズーム</button>
     </div>
   </header>
 
   <div class="boards">
-    <div class="board" id="boardL">
+    <div class="board">
       <canvas id="canL"></canvas>
     </div>
-    <div class="board" id="boardR">
+    <div class="board">
       <canvas id="canR"></canvas>
       <div id="menu" class="overlay">
         <div class="card">
-          <h2>使い方</h2>
-          <p>左・右に<b>同じサイズの高精細画像</b>を読み込み、「差分を自動検出」を押すと右画像の違いを自動抽出します。</p>
-          <p class="small">外部からは「🌐 WEBからランダム画像」で Wikimedia Commons から1枚取得（CORS対応）。</p>
-          <div class="legend">
-            <span><i class="good"></i> 当たり</span>
-            <span><i class="hint"></i> ヒント</span>
-            <span><i class="bad"></i> はずれ</span>
-          </div>
-          <p>ズームをONにするとポインタ周辺を拡大表示（スマホは指でなぞる）。</p>
+          <h2>遊び方</h2>
+          <p>スタートを押すと、WEBからランダムに高精細画像を取得して左右に表示します。右の画像には<b>常に3か所</b>だけ細かな違いを仕込みます。見つけたらタップ/クリック！</p>
+          <p style="opacity:.85">※ 画像は Wikimedia Commons から取得します（CORS対応）。</p>
+          <button id="startBig" class="btn">▶ スタート</button>
         </div>
       </div>
-      <div id="mag" class="magnifier"><canvas id="magcv"></canvas></div>
     </div>
   </div>
 
-  <footer>© 2025 SpotDiff Pro — ローカルで完結・データ送信なし</footer>
+  <footer>© 2025 SpotDiff — 3 differences / Random web image / Client-only</footer>
 </div>
 
 <script>
 (function(){
-  // ====== 要素 ======
   const canL = document.getElementById('canL');
   const canR = document.getElementById('canR');
   const ctxL = canL.getContext('2d');
   const ctxR = canR.getContext('2d');
+  const startBtn = document.getElementById('startBtn');
+  const startBig = document.getElementById('startBig');
+  const menu = document.getElementById('menu');
   const remainEl = document.getElementById('remain');
   const timeEl = document.getElementById('time');
-  const menu = document.getElementById('menu');
-  const mag = document.getElementById('mag');
-  const magcv = document.getElementById('magcv');
-  const mgx = magcv.getContext('2d');
-  const zoomBtn = document.getElementById('zoomBtn');
-  const zoomState = document.getElementById('zoomState');
-  let zoomOn = false;
 
-  // ====== 状態 ======
-  let imgL = new Image(), imgR = new Image();
-  let diffs = []; // {x,y,r,found:false}
+  // 固定：常に3か所
+  const DIFF_COUNT = 3;
+
+  // 状態
+  let img = new Image();
+  let diffs = []; // {x,y,r,found:false} 右画像の座標系（実ピクセル）
   let found = 0;
   let timerId = null, tStart = 0;
 
-  const DIFF_LIMIT = 24; // 最大抽出数
-
-  // ====== ユーティリティ ======
+  // タイマー
   function fmtTime(ms){ const s=Math.floor(ms/1000); const m=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return `${m}:${ss}`; }
   function startTimer(){ clearInterval(timerId); tStart=performance.now(); timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250); }
   function stopTimer(){ clearInterval(timerId); }
 
+  // 描画（高精細対応）
   function drawFit(img, canvas, ctx){
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    // 表示は最大640px（レイアウト用）。内部バッファは原寸 * dpr（高精細）
+    // レイアウト：最大640px表示、内部は原寸×dpr
     canvas.style.width = Math.min(640, img.naturalWidth) + 'px';
     const scale = img.naturalWidth / img.naturalHeight;
     const cssW = canvas.clientWidth || Math.min(640, img.naturalWidth);
@@ -131,171 +99,141 @@
     ctx.drawImage(img, 0, 0);
   }
 
-  // ====== 画像ロード ======
-  function loadFile(inputEl, target, done){
-    const file = inputEl.files[0]; if(!file) return;
-    const url = URL.createObjectURL(file);
-    target.onload = ()=>{ URL.revokeObjectURL(url); done && done(); };
-    target.src = url;
+  // WEBからランダム画像取得（Wikimedia Commons / CORS）
+  async function fetchRandomImage(){
+    const api='https://commons.wikimedia.org/w/api.php';
+    const url=`${api}?action=query&generator=random&grnnamespace=6&grnlimit=1&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=3000&format=json&origin=*`;
+    const res=await fetch(url);
+    const data=await res.json();
+    const page = data?.query?.pages && Object.values(data.query.pages)[0];
+    const info = page?.imageinfo?.[0];
+    if(!info?.url) throw new Error('画像取得に失敗');
+    return info.url;
   }
 
-  // サンプル生成（Canvasで高解像背景を作る）
-  function loadSample(){
-    const w=1600,h=1000;
-    const a=document.createElement('canvas'); a.width=w; a.height=h;
-    const b=document.createElement('canvas'); b.width=w; b.height=h;
-    const A=a.getContext('2d'), B=b.getContext('2d');
+  // 差分を右画像に「埋め込む」（元画像を軽く加工：明度・色相シフトなど）
+  function implantDifferences(){
+    diffs = [];
+    // 右キャンバスの生解像度（dpr考慮前）を取得
+    const dpr = Math.min(window.devicePixelRatio||1,2);
+    const w = Math.round(canR.width / dpr);
+    const h = Math.round(canR.height / dpr);
 
-    const grad = A.createLinearGradient(0,0,w,h);
-    grad.addColorStop(0,'#354a9e'); grad.addColorStop(1,'#0f1740');
-    A.fillStyle=grad; A.fillRect(0,0,w,h); B.fillStyle=grad; B.fillRect(0,0,w,h);
-    for(let i=0;i<200;i++){
-      A.fillStyle = `hsl(${(i*13)%360},70%,55%)`; B.fillStyle=A.fillStyle;
-      const x=Math.random()*w, y=Math.random()*h, r=6+Math.random()*18;
-      A.beginPath(); A.arc(x,y,r,0,Math.PI*2); A.fill();
-      B.beginPath(); B.arc(x,y,r,0,Math.PI*2); B.fill();
-    }
-    // 右にだけ微改変
-    for(let i=0;i<40;i++){
-      B.save(); B.globalCompositeOperation='lighter';
-      B.fillStyle = `hsla(${(i*23)%360},80%,60%,0.6)`;
-      const x=Math.random()*w, y=Math.random()*h;
-      B.fillRect(x,y, 12+Math.random()*30, 12+Math.random()*30);
-      B.restore();
-    }
-    imgL=new Image(); imgR=new Image();
-    imgL.onload=()=>{ imgR.onload=()=>{ drawFit(imgL, canL, ctxL); drawFit(imgR, canR, ctxR); menu.style.display='flex'; }; imgR.src=b.toDataURL('image/png'); };
-    imgL.src=a.toDataURL('image/png');
-  }
-
-  // Wikimedia Commons からランダム画像（CORS対応：origin=*）
-  async function fetchRandomCommons(){
-    try{
-      const api='https://commons.wikimedia.org/w/api.php';
-      const url=`${api}?action=query&generator=random&grnnamespace=6&grnlimit=1&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=3000&format=json&origin=*`;
-      const res=await fetch(url);
-      const data=await res.json();
-      const page = data?.query?.pages && Object.values(data.query.pages)[0];
-      const info = page?.imageinfo?.[0];
-      if(!info?.url){ alert('画像取得に失敗しました'); return; }
-      const src = info.url;
-
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = ()=>{
-        imgL = img;
-        imgR = new Image();
-        imgR.crossOrigin = "anonymous";
-        imgR.onload = ()=>{
-          drawFit(imgL, canL, ctxL);
-          drawFit(imgR, canR, ctxR);
-          menu.style.display='flex';
-        };
-        imgR.src = src; // 同じ画像を右にも
-      };
-      img.src = src;
-    }catch(e){
-      console.error(e); alert('WEB画像の取得中にエラーが発生しました');
-    }
-  }
-
-  // ====== 差分自動検出 ======
-  function buildDiffs(){
-    if(!imgL.naturalWidth || !imgR.naturalWidth){ alert('左と右の画像を読み込んでください（または「サンプル生成」「WEBランダム」）。'); return; }
-    if(imgL.naturalWidth!==imgR.naturalWidth || imgL.naturalHeight!==imgR.naturalHeight){ alert('左右の画像サイズが異なります。'); return; }
-    menu.style.display='none';
-
-    const diffParams = {
-      easy:   {th: 28,  minArea: 120, radius: 26, nms: 16},
-      normal: {th: 34,  minArea: 200, radius: 22, nms: 18},
-      hard:   {th: 42,  minArea: 320, radius: 18, nms: 20},
-      expert: {th: 56,  minArea: 420, radius: 14, nms: 24},
-    }[document.getElementById('difficulty').value];
-
-    const w = imgL.naturalWidth, h = imgL.naturalHeight;
-    const offL=document.createElement('canvas'), offR=document.createElement('canvas');
-    offL.width=w; offL.height=h; offR.width=w; offR.height=h;
-    const a=offL.getContext('2d'), b=offR.getContext('2d');
-    a.drawImage(imgL,0,0); b.drawImage(imgR,0,0);
-    const dataL=a.getImageData(0,0,w,h), dataR=b.getImageData(0,0,w,h);
-
-    const mask=new Uint8ClampedArray(w*h);
-    for(let i=0;i<w*h;i++){
-      const r1=dataL.data[i*4], g1=dataL.data[i*4+1], b1=dataL.data[i*4+2];
-      const r2=dataR.data[i*4], g2=dataR.data[i*4+1], b2=dataR.data[i*4+2];
-      const dr=r1-r2, dg=g1-g2, db=b1-b2;
-      const d = Math.sqrt(dr*dr + dg*dg + db*db);
-      if(d>diffParams.th) mask[i]=1;
+    // 3つのランダム円を作る（縁から余白を取る）
+    const RMIN=18, RMAX=36, MARGIN=40;
+    for(let i=0;i<DIFF_COUNT;i++){
+      const r = Math.floor(RMIN + Math.random()*(RMAX-RMIN));
+      const x = Math.floor(MARGIN + Math.random()*(w - MARGIN*2));
+      const y = Math.floor(MARGIN + Math.random()*(h - MARGIN*2));
+      diffs.push({x, y, r, found:false});
     }
 
-    // 連結成分でクラスタリング
-    const labels=new Int32Array(w*h).fill(-1);
-    const comps=[]; let label=0;
-    const qx=new Int32Array(w*h), qy=new Int32Array(w*h);
-    for(let y=0;y<h;y++){
-      for(let x=0;x<w;x++){
-        const idx=y*w+x;
-        if(mask[idx]===1 && labels[idx]===-1){
-          let qh=0, qt=0; labels[idx]=label; qx[qt]=x; qy[qt]=y; qt++;
-          let minx=x,maxx=x,miny=y,maxy=y,area=0,sumx=0,sumy=0;
-          while(qh<qt){
-            const cx=qx[qh], cy=qy[qh]; qh++; area++; sumx+=cx; sumy+=cy;
-            if(cx<minx)minx=cx; if(cx>maxx)maxx=cx; if(cy<miny)miny=cy; if(cy>maxy)maxy=cy;
-            for(let dy=-1;dy<=1;dy++){
-              for(let dx=-1;dx<=1;dx++){
-                if(dx===0&&dy===0) continue;
-                const nx=cx+dx, ny=cy+dy;
-                if(nx>=0&&nx<w&&ny>=0&&ny<h){
-                  const nidx=ny*w+nx;
-                  if(mask[nidx]===1 && labels[nidx]===-1){
-                    labels[nidx]=label; qx[qt]=nx; qy[qt]=ny; qt++;
-                  }
-                }
-              }
-            }
-          }
-          if(area>=diffParams.minArea){
-            const cx=sumx/area, cy=sumy/area;
-            const r=Math.max(diffParams.radius, Math.min(60, Math.max(maxx-minx, maxy-miny)*0.35));
-            comps.push({x:cx,y:cy,r,area});
-          }
-          label++;
+    // ピクセル加工：円領域内の彩度/明度を変えて「自然な違い」を作る
+    // 右キャンバスはすでに drawFit 済みなので、その上のピクセルを取得・変換
+    const imgData = ctxR.getImageData(0,0,w,h);
+    const arr = imgData.data;
+
+    function inCircle(cx,cy,cr,px,py){ const dx=px-cx, dy=py-cy; return dx*dx+dy*dy<=cr*cr; }
+    function rgb2hsl(r,g,b){
+      r/=255; g/=255; b/=255;
+      const max=Math.max(r,g,b), min=Math.min(r,g,b);
+      let h,s,l=(max+min)/2;
+      if(max===min){ h=s=0; }
+      else{
+        const d=max-min;
+        s = l>0.5 ? d/(2-max-min) : d/(max+min);
+        switch(max){
+          case r: h=(g-b)/d + (g<b?6:0); break;
+          case g: h=(b-r)/d + 2; break;
+          case b: h=(r-g)/d + 4; break;
+        }
+        h/=6;
+      }
+      return [h,s,l];
+    }
+    function hsl2rgb(h,s,l){
+      function hue2rgb(p,q,t){ if(t<0) t+=1; if(t>1) t-=1;
+        if(t<1/6) return p+(q-p)*6*t;
+        if(t<1/2) return q;
+        if(t<2/3) return p+(q-p)*(2/3 - t)*6;
+        return p;
+      }
+      let r,g,b;
+      if(s===0){ r=g=b=l; }
+      else{
+        const q = l<0.5 ? l*(1+s) : l+s - l*s;
+        const p = 2*l - q;
+        r = hue2rgb(p,q,h+1/3);
+        g = hue2rgb(p,q,h);
+        b = hue2rgb(p,q,h-1/3);
+      }
+      return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
+    }
+
+    // 各円ごとに微妙に異なる加工（色相±、明度±）
+    diffs.forEach((d,idx)=>{
+      const hueShift = ((idx+1)*0.08) * (Math.random()<0.5?-1:1); // ±約0.08（約±30°）
+      const lightDelta = (Math.random()*0.20 - 0.10); // -0.10〜+0.10
+      for(let py=d.y-d.r; py<=d.y+d.r; py++){
+        if(py<0||py>=h) continue;
+        for(let px=d.x-d.r; px<=d.x+d.r; px++){
+          if(px<0||px>=w) continue;
+          if(!inCircle(d.x,d.y,d.r,px,py)) continue;
+          const i=(py*w+px)*4;
+          const r=arr[i], g=arr[i+1], b=arr[i+2];
+          let [hh,ss,ll]=rgb2hsl(r,g,b);
+          hh = (hh + hueShift + 1)%1;
+          ll = Math.max(0, Math.min(1, ll + lightDelta));
+          const [nr,ng,nb]=hsl2rgb(hh,ss,ll);
+          arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb; // alphaはそのまま
         }
       }
-    }
+    });
 
-    // 重複除去（NMS）
-    comps.sort((a,b)=>b.area-a.area);
-    const keep=[]; const nms=diffParams.nms;
-    compsLoop: for(const c of comps){
-      for(const k of keep){
-        if(Math.hypot(c.x-k.x,c.y-k.y) < nms + Math.max(c.r,k.r)*0.2){ continue compsLoop; }
-      }
-      keep.push(c); if(keep.length>=DIFF_LIMIT) break;
-    }
-
-    diffs = keep.map(d=>({x:d.x,y:d.y,r:d.r,found:false}));
-    found=0; remainEl.textContent=diffs.length;
-    drawFit(imgL, canL, ctxL); drawFit(imgR, canR, ctxR);
+    ctxR.putImageData(imgData, 0, 0);
+    found = 0;
+    remainEl.textContent = (DIFF_COUNT - found);
     startTimer();
   }
 
+  // スタート：画像を取得→左右に描画→右に3か所の違いを埋め込む
+  async function startGame(){
+    menu.style.display='none';
+    remainEl.textContent='-'; timeEl.textContent='00:00'; stopTimer();
+    try{
+      const src = await fetchRandomImage();
+      img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = ()=>{
+        drawFit(img, canL, ctxL);
+        drawFit(img, canR, ctxR);
+        // 右だけ加工して違いを作成
+        implantDifferences();
+      };
+      img.src = src;
+    }catch(e){
+      console.error(e);
+      alert('画像の取得に失敗しました。もう一度お試しください。');
+      menu.style.display='flex';
+    }
+  }
+
+  // クリック判定（右だけ）
   function flash(x,y,r,kind){
     ctxR.save();
     ctxR.lineWidth=4;
-    ctxR.strokeStyle = kind==='good'? 'var(--good)' : (kind==='hint'? 'var(--hint)' : 'var(--bad)');
+    ctxR.strokeStyle = (kind==='good')? 'var(--good)' : 'var(--bad)';
     ctxR.beginPath(); ctxR.arc(x,y,r+5,0,Math.PI*2); ctxR.stroke();
     ctxR.restore();
   }
 
   function checkHit(px,py){
-    if(!diffs.length) return;
     for(const d of diffs){
       if(!d.found && Math.hypot(px-d.x, py-d.y)<=d.r){
-        d.found=true; found++;
+        d.found = true; found++;
         flash(d.x,d.y,d.r,'good');
-        remainEl.textContent=(diffs.length-found);
-        if(found===diffs.length){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
+        remainEl.textContent = (DIFF_COUNT - found);
+        if(found===DIFF_COUNT){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
         return;
       }
     }
@@ -303,6 +241,7 @@
   }
 
   canR.addEventListener('click',(e)=>{
+    // CSSサイズ→キャンバス座標に変換
     const r=canR.getBoundingClientRect();
     const dpr=Math.min(window.devicePixelRatio||1,2);
     const scaleX=canR.width/dpr/r.width, scaleY=canR.height/dpr/r.height;
@@ -310,45 +249,11 @@
     checkHit(x,y);
   },{passive:true});
 
-  // ヒント
-  document.getElementById('hintBtn').onclick=()=>{ const d=diffs.find(v=>!v.found); if(d) flash(d.x,d.y,d.r,'hint'); };
-
-  // リセット
-  document.getElementById('resetBtn').onclick=()=>{ diffs=[]; found=0; remainEl.textContent='-'; timeEl.textContent='00:00'; stopTimer(); menu.style.display='flex';
-    if(imgL.naturalWidth) drawFit(imgL, canL, ctxL); if(imgR.naturalWidth) drawFit(imgR, canR, ctxR);
-  };
-
-  // ズーム（拡大鏡）
-  function setZoom(on){ zoomOn=on; zoomState.textContent=on?'ON':'OFF'; mag.style.display=on?'block':'none'; }
-  setZoom(false);
-  zoomBtn.onclick=()=>setZoom(!zoomOn);
-  function moveMagnifier(e){
-    if(!zoomOn) return;
-    const rect=canR.getBoundingClientRect();
-    const cx=(e.touches?e.touches[0].clientX:e.clientX), cy=(e.touches?e.touches[0].clientY:e.clientY);
-    const x=cx-rect.left, y=cy-rect.top;
-    mag.style.left=(x-mag.clientWidth/2)+'px'; mag.style.top=(y-mag.clientHeight/2)+'px';
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    magcv.width=canR.width/dpr; magcv.height=canR.height/dpr;
-    mgx.setTransform(1,0,0,1,0,0);
-    mgx.drawImage(canR,0,0,magcv.width,magcv.height);
-    magcv.style.transform='scale(2)';
-    magcv.style.transformOrigin=`${x}px ${y}px`;
-  }
-  canR.addEventListener('mousemove',moveMagnifier,{passive:true});
-  canR.addEventListener('touchmove',moveMagnifier,{passive:true});
-  canR.addEventListener('touchstart',moveMagnifier,{passive:true});
-
-  // ファイル選択
-  document.getElementById('leftImg').addEventListener('change',()=>loadFile(document.getElementById('leftImg'), imgL, ()=>drawFit(imgL, canL, ctxL)));
-  document.getElementById('rightImg').addEventListener('change',()=>loadFile(document.getElementById('rightImg'), imgR, ()=>drawFit(imgR, canR, ctxR)));
-
   // ボタン
-  document.getElementById('sampleBtn').onclick=loadSample;
-  document.getElementById('randomWebBtn').onclick=fetchRandomCommons;
-  document.getElementById('buildBtn').onclick=buildDiffs;
+  startBtn.onclick = startGame;
+  startBig.onclick = startGame;
 
-  // 初期ガイド表示
+  // 初期はガイド表示
   menu.style.display='flex';
 })();
 </script>
