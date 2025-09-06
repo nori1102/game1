@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>間違い探し（3か所固定・大きめ＆アニメベース）</title>
+<title>間違い探し（アニメ風・静止・超大きい間違い）</title>
 <style>
   :root{
     --bg:#0b1020; --fg:#e6f3ff; --line:#22314f;
@@ -39,7 +39,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>間違い探し（3か所固定・大きめ＆アニメベース）</h1>
+    <h1>間違い探し（アニメ風・静止・超大きい間違い）</h1>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button id="startBtn" class="btn">▶ スタート</button>
       <button id="revealBtn" class="btn">👀 答えを見る</button>
@@ -58,8 +58,8 @@
       <div id="menu" class="overlay">
         <div class="card">
           <h2>遊び方</h2>
-          <p>スタートでWEBから高精細画像を左右に表示。右には<b>常に3か所</b>の違いを仕込みます。クリックで指定！</p>
-          <p style="opacity:.85">開始直後3秒は薄い点滅ヒント。60秒 or ミス6回で自動的に答えを表示します。</p>
+          <p>スタートで左右に「アニメ風の風景」を自動描画。右には<b>常に3か所</b>の<b>超大きい違い</b>を置きます。クリックで指定！</p>
+          <p style="opacity:.85">開始直後3秒は、正解位置が薄く点滅して見つけやすいです。60秒 or ミス6回で自動的に答え表示。</p>
           <button id="startBig" class="btn">▶ スタート</button>
         </div>
       </div>
@@ -67,7 +67,7 @@
     </div>
   </div>
 
-  <footer>© 2025 SpotDiff — 3 differences / Random web image / Client-only</footer>
+  <footer>© 2025 SpotDiff — Anime-style / Static / 3 big differences</footer>
 </div>
 
 <script>
@@ -81,244 +81,278 @@
 
   const DIFF_COUNT=3, AUTO_REVEAL_TIME=60000, AUTO_REVEAL_MISS=6, NEAR_FACTOR=1.6;
 
-  // 画像＆オフスク
-  let img=new Image(), offL=null, offR=null, imgW=0, imgH=0;
+  // 画像サイズ（描画ベース）は固定にして、毎回そのサイズで生成（“動き無し”）
+  const IMG_W = 1280, IMG_H = 768;
+
   // 状態
   let diffs=[], found=0, missCount=0, revealed=false;
   let timerId=null, tStart=0, autoRevealTimer=null, introPulseUntil=0;
-  // アニメ（Ken Burns）
-  const anim={s:1, tx:0, ty:0, t0:performance.now()};
-  let rafId=null;
 
   function fmtTime(ms){const s=Math.floor(ms/1000);return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
   function startTimer(){clearInterval(timerId);tStart=performance.now();timerId=setInterval(()=>timeEl.textContent=fmtTime(performance.now()-tStart),250);
     clearTimeout(autoRevealTimer);autoRevealTimer=setTimeout(()=>revealAnswers(true),AUTO_REVEAL_TIME);}
   function stopTimer(){clearInterval(timerId);clearTimeout(autoRevealTimer);}
 
-  function setCanvasToImageSize(img, canvas, ctx){
+  function setupCanvas(canvas, ctx){
     const dpr=Math.min(window.devicePixelRatio||1,2);
-    canvas.style.width=Math.min(640,img.naturalWidth)+'px';
-    const scale=img.naturalWidth/img.naturalHeight;
-    const cssW=canvas.clientWidth||Math.min(640,img.naturalWidth);
+    canvas.style.width=Math.min(640, IMG_W)+'px';
+    const scale=IMG_W/IMG_H;
+    const cssW=canvas.clientWidth||Math.min(640, IMG_W);
     const cssH=Math.round(cssW/scale);
     canvas.style.height=cssH+'px';
-    canvas.width=Math.round(img.naturalWidth*dpr);
-    canvas.height=Math.round(img.naturalHeight*dpr);
+    canvas.width=Math.round(IMG_W*dpr);
+    canvas.height=Math.round(IMG_H*dpr);
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,canvas.width/dpr,canvas.height/dpr);
   }
 
-  async function fetchRandomImage(){
-    const api='https://commons.wikimedia.org/w/api.php';
-    const url=`${api}?action=query&generator=random&grnnamespace=6&grnlimit=1&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=3000&format=json&origin=*`;
-    const res=await fetch(url); const data=await res.json();
-    const page=data?.query?.pages && Object.values(data.query.pages)[0]; const info=page?.imageinfo?.[0];
-    if(!info?.url) throw new Error('画像取得に失敗'); return info.url;
+  // ===== アニメ風の風景を描く（画像不使用・Canvasのみ） =====
+  function drawAnimeScene(ctx){
+    const w=IMG_W, h=IMG_H;
+
+    // 空（アニメ空っぽい2段グラデ）
+    let g = ctx.createLinearGradient(0,0,0,h*0.7);
+    g.addColorStop(0,'#87b9ff'); g.addColorStop(1,'#c9e6ff');
+    ctx.fillStyle=g; ctx.fillRect(0,0,w,h*0.7);
+
+    // 地平線〜草地
+    g = ctx.createLinearGradient(0,h*0.6,0,h);
+    g.addColorStop(0,'#7ddc8a'); g.addColorStop(1,'#41b36c');
+    ctx.fillStyle=g; ctx.fillRect(0,h*0.6,w,h*0.4);
+
+    // 山並み（丸みを帯びた稜線）
+    for(let i=0;i<3;i++){
+      const baseY = h*0.62 + i*26;
+      ctx.fillStyle = `hsl(${180+i*12}, 45%, ${35+i*6}%)`;
+      ctx.beginPath();
+      ctx.moveTo(0, baseY);
+      for(let x=0;x<=w;x+=40){
+        const y = baseY - 60*Math.sin((x/220)+(i*0.6)) - (i*12);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fill();
+    }
+
+    // 太陽
+    ctx.fillStyle = '#ffd36b';
+    ctx.beginPath(); ctx.arc(w*0.78, h*0.2, 60, 0, Math.PI*2); ctx.fill();
+
+    // 雲（フラット塗り＋角丸）
+    function cloud(x,y,s){
+      ctx.fillStyle='rgba(255,255,255,0.95)';
+      roundedRect(x, y, 160*s, 48*s, 24*s, true);
+      roundedRect(x+90*s, y-10*s, 130*s, 60*s, 28*s, true);
+      roundedRect(x+40*s, y+6*s, 120*s, 38*s, 18*s, true);
+    }
+    cloud(120, 120, 1.0);
+    cloud(420, 80, 1.2);
+    cloud(740, 130, 0.9);
+
+    // 桜の木っぽい（アニメ塗り）
+    function sakura(x,y){
+      ctx.fillStyle='#6a3f22'; ctx.fillRect(x-8,y,16,80);
+      ctx.fillStyle='#ffbcd3';
+      ctx.beginPath(); ctx.arc(x, y, 46, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x+26, y+18, 34, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x-28, y+10, 30, 0, Math.PI*2); ctx.fill();
+    }
+    sakura(180, h*0.6-20); sakura(280, h*0.6-10);
+
+    // 鳥（記号的）
+    ctx.strokeStyle='#274060'; ctx.lineWidth=3;
+    for(let i=0;i<5;i++){
+      const bx = 160 + i*120, by = 140 + (i%2)*16;
+      ctx.beginPath(); ctx.moveTo(bx,by); ctx.quadraticCurveTo(bx+16,by-10, bx+32,by);
+      ctx.moveTo(bx+32,by); ctx.quadraticCurveTo(bx+48,by-10, bx+64,by);
+      ctx.stroke();
+    }
+
+    function roundedRect(x,y,w,h,r,fill){
+      const rr=Math.min(r,w/2,h/2);
+      ctx.beginPath();
+      ctx.moveTo(x+rr,y);
+      ctx.arcTo(x+w,y,x+w,y+h,rr);
+      ctx.arcTo(x+w,y+h,x,y+h,rr);
+      ctx.arcTo(x,y+h,x,y,rr);
+      ctx.arcTo(x,y,x+w,y,rr);
+      fill?ctx.fill():ctx.stroke();
+    }
   }
 
-  function buildOffscreens(){
-    offL=document.createElement('canvas'); offR=document.createElement('canvas');
-    offL.width=imgW; offL.height=imgH; offR.width=imgW; offR.height=imgH;
-    offL.getContext('2d').drawImage(img,0,0); offR.getContext('2d').drawImage(img,0,0);
-  }
+  // 右側だけに「超大きい違い」を配置（3つ）
+  function placeBigDifferences(ctx){
+    const w=IMG_W, h=IMG_H;
+    diffs = [];
+    const RMIN=110, RMAX=160, MARGIN=160; // ★特大サイズ
+    const shapes = ['star','heart','sunburst']; // アニメっぽい記号
 
-  // 右画像へ「大きな」違いを埋め込む
-  function implantDifferences(){
-    diffs=[];
-    // さらに倍：半径 80〜140px
-    const RMIN=80, RMAX=140, MARGIN=120;
     for(let i=0;i<DIFF_COUNT;i++){
-      const r=Math.floor(RMIN+Math.random()*(RMAX-RMIN));
-      const x=Math.floor(MARGIN+Math.random()*(imgW-MARGIN*2));
-      const y=Math.floor(MARGIN+Math.random()*(imgH-MARGIN*2));
-      diffs.push({x,y,r,found:false});
+      const r = Math.floor(RMIN + Math.random()*(RMAX-RMIN));
+      const x = Math.floor(MARGIN + Math.random()*(w - MARGIN*2));
+      const y = Math.floor(MARGIN + Math.random()*(h - MARGIN*2));
+      const shape = shapes[i % shapes.length];
+      diffs.push({x,y,r,found:false,shape});
+      drawMarkerShape(ctx, shape, x, y, r); // 右だけ上描きで“違い”を作る
     }
-    const ctx=offR.getContext('2d');
-    const data=ctx.getImageData(0,0,imgW,imgH), arr=data.data;
 
-    function inCircle(cx,cy,cr,px,py){const dx=px-cx, dy=py-cy; return dx*dx+dy*dy<=cr*cr;}
-    function rgb2hsl(r,g,b){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b);let h,s,l=(max+min)/2;
-      if(max===min){h=s=0;}else{const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);switch(max){case r:h=(g-b)/d+(g<b?6:0);break;case g:h=(b-r)/d+2;break;case b:h=(r-g)/d+4;break;}h/=6;}return[h,s,l];}
-    function hsl2rgb(h,s,l){function hue2rgb(p,q,t){if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3 - t)*6;return p;}
-      let r,g,b;if(s===0){r=g=b=l;}else{const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q;r=hue2rgb(p,q,h+1/3);g=hue2rgb(p,q,h);b=hue2rgb(p,q,h-1/3);}return[Math.round(r*255),Math.round(g*255),Math.round(b*255)];}
-
-    diffs.forEach((d,idx)=>{
-      const hueShift=((idx+1)*0.12)*(Math.random()<0.5?-1:1); // ±約43°
-      const lightDelta=(Math.random()*0.30-0.15);             // 明るさ±0.15
-      const satDelta=(Math.random()*0.45-0.22);               // 彩度±0.22
-      for(let py=d.y-d.r; py<=d.y+d.r; py++){
-        if(py<0||py>=imgH) continue;
-        for(let px=d.x-d.r; px<=d.x+d.r; px++){
-          if(px<0||px>=imgW) continue;
-          if(!inCircle(d.x,d.y,d.r,px,py)) continue;
-          const i=(py*imgW+px)*4; const r=arr[i], g=arr[i+1], b=arr[i+2];
-          let [hh,ss,ll]=rgb2hsl(r,g,b);
-          hh=(hh+hueShift+1)%1; ll=Math.max(0,Math.min(1,ll+lightDelta)); ss=Math.max(0,Math.min(1,ss+satDelta));
-          const [nr,ng,nb]=hsl2rgb(hh,ss,ll); arr[i]=nr; arr[i+1]=ng; arr[i+2]=nb;
-        }
-      }
-    });
-    ctx.putImageData(data,0,0);
-
-    found=0; missCount=0; revealed=false;
-    remainEl.textContent=(DIFF_COUNT-found); missEl.textContent=missCount;
-    introPulseUntil=performance.now()+3000; // 開始3秒ヒント
-    startTimer();
+    // 開始3秒だけ薄く点滅ヒント
+    introPulseUntil = performance.now() + 3000;
   }
 
-  // === アニメーション描画（Ken Burns＋オーバーレイも同変換で描画） ===
-  function drawSide(ctx, off){
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    const w=canL.width/dpr, h=canL.height/dpr; // 両キャンバス同サイズ＝画像原寸
-    const t=(performance.now()-anim.t0)/1000;
-    // ゆるいズーム＆パン
-    anim.s=1.02+0.02*Math.sin(t/1.8);
-    anim.tx=Math.sin(t/2.4)*12;
-    anim.ty=Math.cos(t/3.0)*8;
-
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,w,h);
+  // 差分本体（右に描く“目立つけど世界観なじむ”大きな形）
+  function drawMarkerShape(ctx, shape, x, y, r){
     ctx.save();
-    ctx.translate(imgW/2+anim.tx, imgH/2+anim.ty);
-    ctx.scale(anim.s, anim.s);
-    ctx.drawImage(off, -imgW/2, -imgH/2);
+    ctx.translate(x,y);
+    if(shape==='star'){
+      ctx.fillStyle='rgba(255,233,95,0.85)';
+      star(0,0,r*0.9, Math.max(6, Math.floor(8)), 0.45);
+      ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=4; ctx.stroke();
+    }else if(shape==='heart'){
+      ctx.fillStyle='rgba(255,120,145,0.85)';
+      ctx.beginPath();
+      heartPath(0,0,r*0.75); ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=4; ctx.stroke();
+    }else{ // sunburst
+      ctx.fillStyle='rgba(114,207,255,0.85)';
+      sunburst(0,0,r*0.85,10);
+      ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=4; ctx.stroke();
+    }
+    ctx.restore();
+
+    function star(cx,cy,R,points,inner=0.5){
+      ctx.beginPath();
+      for(let i=0;i<points*2;i++){
+        const ang = Math.PI*i/points;
+        const rr = (i%2===0)?R:(R*inner);
+        const px = cx + rr*Math.cos(ang), py = cy + rr*Math.sin(ang);
+        (i===0)?ctx.moveTo(px,py):ctx.lineTo(px,py);
+      }
+      ctx.closePath();
+    }
+    function heartPath(cx,cy,sz){
+      const s = sz/16;
+      ctx.moveTo(cx, cy+6*s);
+      ctx.bezierCurveTo(cx-16*s, cy-10*s, cx-10*s, cy-26*s, cx, cy-18*s);
+      ctx.bezierCurveTo(cx+10*s, cy-26*s, cx+16*s, cy-10*s, cx, cy+6*s);
+    }
+    function sunburst(cx,cy,R,n){
+      ctx.beginPath();
+      for(let i=0;i<n;i++){
+        const ang = (i/n)*Math.PI*2;
+        const rx = Math.cos(ang), ry = Math.sin(ang);
+        ctx.moveTo(cx,cy);
+        ctx.lineTo(cx+rx*R, cy+ry*R);
+        ctx.arc(cx,cy,R, ang, ang + (Math.PI*2/n));
+      }
+      ctx.closePath();
+    }
+  }
+
+  // 枠・ガイド
+  function hintRings(ctx){
+    if(performance.now() >= introPulseUntil || revealed) return;
+    const a=0.18+0.12*Math.sin(performance.now()/160);
+    ctx.save(); ctx.globalAlpha=a; ctx.lineWidth=8; ctx.strokeStyle='var(--hint)';
+    diffs.forEach(d=>{ if(!d.found){ ctx.beginPath(); ctx.arc(d.x,d.y,d.r+18,0,Math.PI*2); ctx.stroke(); } });
     ctx.restore();
   }
 
-  // エフェクト描画（画像座標で管理→同じ変換で重ね描画）
-  const effects=[]; // {type:'pulse'|'cross'|'near'|'reveal', x,y,r, life(0..1)}
-  function addEffect(e){effects.push(e);}
-  function drawEffects(ctx){
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    const w=canR.width/dpr, h=canR.height/dpr;
-    ctx.setTransform(dpr,0,0,dpr,0,0);
+  // 視覚フィードバック
+  function pulseRing(ctx,x,y,r,color){
     ctx.save();
-    ctx.translate(imgW/2+anim.tx, imgH/2+anim.ty);
-    ctx.scale(anim.s, anim.s);
-
-    // 開始ヒント（時間内だけ薄い点滅）
-    if(performance.now() < introPulseUntil && !revealed){
-      const a=0.18+0.12*Math.sin(performance.now()/160);
-      diffs.forEach(d=>{
-        if(d.found) return;
-        ctx.save(); ctx.lineWidth=6; ctx.globalAlpha=a; ctx.strokeStyle='var(--hint)';
-        ctx.beginPath(); ctx.arc(d.x,d.y,d.r+14,0,Math.PI*2); ctx.stroke(); ctx.restore();
-      });
-    }
-
-    // 常時の「答え表示」
-    if(revealed){
-      diffs.forEach(d=>{
-        if(!d.found){
-          ctx.save(); ctx.lineWidth=8; ctx.globalAlpha=.95; ctx.strokeStyle='var(--hint)';
-          ctx.beginPath(); ctx.arc(d.x,d.y,d.r+16,0,Math.PI*2); ctx.stroke(); ctx.restore();
-        }
-      });
-    }
-
-    // 一時エフェクト
-    for(let i=effects.length-1;i>=0;i--){
-      const e=effects[i];
-      if(e.type==='pulse'){
-        const rr=e.r + (1-e.life)*40; const a=e.life*0.9;
-        ctx.save(); ctx.lineWidth=10; ctx.globalAlpha=a; ctx.strokeStyle='var(--good)';
-        ctx.beginPath(); ctx.arc(e.x,e.y,rr,0,Math.PI*2); ctx.stroke(); ctx.restore();
-      }else if(e.type==='cross'){
-        const s=28+(1-e.life)*12; const a=.95*e.life;
-        ctx.save(); ctx.lineWidth=8; ctx.globalAlpha=a; ctx.strokeStyle='var(--bad)';
-        ctx.beginPath(); ctx.moveTo(e.x-s,e.y-s); ctx.lineTo(e.x+s,e.y+s);
-        ctx.moveTo(e.x+s,e.y-s); ctx.lineTo(e.x-s,e.y+s); ctx.stroke(); ctx.restore();
-      }else if(e.type==='near'){
-        const a=.7*e.life;
-        ctx.save(); ctx.lineWidth=7; ctx.globalAlpha=a; ctx.setLineDash([12,10]); ctx.strokeStyle='var(--hint)';
-        ctx.beginPath(); ctx.arc(e.x,e.y,e.r*NEAR_FACTOR,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
-      }
-      e.life -= 0.06;
-      if(e.life<=0) effects.splice(i,1);
-    }
-
+    ctx.lineWidth=10; ctx.strokeStyle=color;
+    ctx.beginPath(); ctx.arc(x,y,r+20,0,Math.PI*2); ctx.stroke();
     ctx.restore();
   }
-
-  function loop(){
-    if(!offL||!offR) return;
-    drawSide(ctxL, offL);
-    drawSide(ctxR, offR);
-    drawEffects(ctxR);
-    rafId=requestAnimationFrame(loop);
+  function bigCross(ctx,x,y,size,color){
+    const s=size;
+    ctx.save();
+    ctx.lineWidth=9; ctx.strokeStyle=color; ctx.globalAlpha=.95;
+    ctx.beginPath(); ctx.moveTo(x-s,y-s); ctx.lineTo(x+s,y+s);
+    ctx.moveTo(x+s,y-s); ctx.lineTo(x-s,y+s); ctx.stroke();
+    ctx.restore();
   }
-
-  // クリック→キャンバス座標→画像座標へ逆変換
-  function canvasToImageCoords(xc,yc){
-    const cx=imgW/2, cy=imgH/2;
-    const xi = ((xc - (cx + anim.tx)) / anim.s) + cx;
-    const yi = ((yc - (cy + anim.ty)) / anim.s) + cy;
-    return {x:xi, y:yi};
+  function nearRing(ctx,x,y,r){
+    ctx.save();
+    ctx.lineWidth=8; ctx.setLineDash([14,12]); ctx.strokeStyle='var(--hint)';
+    ctx.beginPath(); ctx.arc(x,y,r*NEAR_FACTOR,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
   }
 
   function revealAnswers(auto=false){
     stopTimer(); revealed=true;
+    // 未発見をすべて強調
+    ctxR.save(); ctxR.lineWidth=10; ctxR.strokeStyle='var(--hint)'; ctxR.globalAlpha=.95;
+    diffs.forEach(d=>{ if(!d.found){ ctxR.beginPath(); ctxR.arc(d.x,d.y,d.r+22,0,Math.PI*2); ctxR.stroke(); } });
+    ctxR.restore();
     remainEl.textContent=0;
     setTimeout(()=>alert(auto?'時間/ミス上限で答えを表示しました。スタートで再挑戦できます。':'答えを表示しました。スタートで再挑戦できます。'),10);
   }
 
+  function drawBoth(){
+    // 左右とも同じ“アニメ風風景”
+    drawAnimeScene(ctxL);
+    drawAnimeScene(ctxR);
+  }
+
   async function startGame(){
     menu.style.display='none';
-    revealed=false; effects.length=0;
-    remainEl.textContent='-'; timeEl.textContent='00:00'; missEl.textContent='0';
-    stopTimer(); if(rafId) cancelAnimationFrame(rafId);
+    revealed=false; remainEl.textContent='-'; timeEl.textContent='00:00'; missEl.textContent='0';
+    stopTimer();
 
-    try{
-      const src=await fetchRandomImage();
-      img=new Image(); img.crossOrigin="anonymous";
-      img.onload=()=>{
-        imgW=img.naturalWidth; imgH=img.naturalHeight;
-        setCanvasToImageSize(img, canL, ctxL);
-        setCanvasToImageSize(img, canR, ctxR);
-        buildOffscreens();
-        implantDifferences();
-        anim.t0=performance.now();
-        loop();
-      };
-      img.src=src;
-    }catch(e){
-      console.error(e); alert('画像の取得に失敗しました。もう一度スタートしてください。');
-      menu.style.display='flex';
-    }
+    // キャンバス初期化
+    setupCanvas(canL, ctxL);
+    setupCanvas(canR, ctxR);
+
+    // ベース描画
+    drawBoth();
+
+    // 右だけに大きい差分を置く
+    placeBigDifferences(ctxR);
+
+    // タイマー開始
+    found=0; missCount=0;
+    remainEl.textContent=(DIFF_COUNT-found);
+    startTimer();
+
+    // 開始直後ヒントの薄リング
+    hintRings(ctxR);
   }
 
   function checkHit(px,py){
-    const pt=canvasToImageCoords(px,py);
+    // キャンバスの CSS→実座標変換（静止なので単純）
+    const r=canR.getBoundingClientRect();
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const scaleX=(canR.width/dpr)/r.width, scaleY=(canR.height/dpr)/r.height;
+    const x=(px - r.left)*scaleX, y=(py - r.top)*scaleY;
+
     for(const d of diffs){
-      const dist=Math.hypot(pt.x-d.x, pt.y-d.y);
+      const dist=Math.hypot(x-d.x, y-d.y);
       if(!d.found && dist<=d.r){
         d.found=true; found++;
-        addEffect({type:'pulse', x:d.x, y:d.y, r:d.r, life:1});
+        pulseRing(ctxR,d.x,d.y,d.r,'var(--good)');
         remainEl.textContent=(DIFF_COUNT-found);
         if(found===DIFF_COUNT){ stopTimer(); setTimeout(()=>alert('クリア！'),10); }
         return;
       }
-      if(!d.found && dist<=d.r*NEAR_FACTOR){ // ニアミスはガイドのみ
-        addEffect({type:'near', x:d.x, y:d.y, r:d.r, life:1});
+      if(!d.found && dist<=d.r*NEAR_FACTOR){
+        nearRing(ctxR,d.x,d.y,d.r);
         return;
       }
     }
     // 遠い＝ミス
     missCount++; missEl.textContent=missCount;
-    addEffect({type:'cross', x:pt.x, y:pt.y, life:1});
+    bigCross(ctxR,x,y,34,'var(--bad)');
     boardR.classList.remove('shake'); void boardR.offsetWidth; boardR.classList.add('shake');
     if(missCount>=AUTO_REVEAL_MISS){ revealAnswers(true); }
   }
 
-  canR.addEventListener('click', e=>{
-    const r=canR.getBoundingClientRect();
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    const scaleX=canR.width/dpr/r.width, scaleY=canR.height/dpr/r.height;
-    const x=(e.clientX-r.left)*scaleX, y=(e.clientY-r.top)*scaleY;
-    checkHit(x,y);
-  }, {passive:true});
+  // イベント
+  canR.addEventListener('click', e=>checkHit(e.clientX,e.clientY), {passive:true});
 
-  // 照準（見た目ガイド）
+  // 照準ガイド（任意）：マウス位置表示
   function moveReticle(e){
     const r=canR.getBoundingClientRect();
     const cx=(e.touches?e.touches[0].clientX:e.clientX);
@@ -332,9 +366,12 @@
   canR.addEventListener('touchstart',moveReticle,{passive:true});
   canR.addEventListener('touchmove',moveReticle,{passive:true});
 
-  startBtn.onclick=startGame; startBig.onclick=startGame;
-  revealBtn.onclick=()=>revealAnswers(false);
+  // ボタン
+  document.getElementById('startBtn').onclick=startGame;
+  document.getElementById('revealBtn').onclick=()=>revealAnswers(false);
+  document.getElementById('startBig').onclick=startGame;
 
+  // 初期ガイド
   menu.style.display='flex';
 })();
 </script>
